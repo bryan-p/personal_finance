@@ -96,6 +96,83 @@ migrations, starts both development services, prints their URLs, and stops both 
 - Backend: <http://localhost:9999>
 - API docs: <http://localhost:9999/docs>
 
+## Deploy on a Linux server
+
+The production deployment uses two systemd services and does not start or install PostgreSQL.
+Before deploying, install these server prerequisites:
+
+- Python 3.11+ with the `venv` module
+- Node.js 20+ and npm
+- Git, systemd, and sudo
+- A reachable PostgreSQL database configured in `.env`
+
+Clone the repository as the Linux user that should own and run the app. Create `.env`, use a
+production `SECRET_KEY`, and confirm that the database host is reachable from the server. Then run:
+
+```bash
+./scripts/deploy.sh --public-host finance.example.com
+```
+
+The deploy script creates the Python environment, installs locked backend/frontend dependencies,
+builds Next.js with the public API URL, verifies PostgreSQL, runs Alembic migrations, installs and
+enables two systemd services, and starts them. It uses `sudo` only for systemd files and service
+management; the app itself runs as the deployment user.
+
+Ports can be set in `.env` or supplied on the command line:
+
+```bash
+./scripts/deploy.sh \
+  --public-host 192.168.1.20 \
+  --frontend-port 5100 \
+  --backend-port 10099
+```
+
+Other useful deployment options:
+
+```text
+--bind-host HOST        Bind both services to this address (default 0.0.0.0)
+--scheme http|https     Build public URLs with this scheme
+--frontend-origin URL  Set the complete browser-visible frontend origin
+--api-url URL           Set the complete browser-visible backend URL
+--service-name NAME     Change the systemd service prefix
+--user USER             Run services as this Linux user
+```
+
+When using HTTPS, place a reverse proxy such as Caddy or nginx in front of the app and pass the
+actual HTTPS frontend origin and API URL. Open only the required firewall ports. If the reverse
+proxy is the only public entry point, bind the app services to `127.0.0.1` and use different proxy
+upstreams for the frontend and backend.
+
+Deployment settings are saved in ignored `.deploy/config`. Inspect services and logs with:
+
+```bash
+sudo systemctl status personal-finance-manager-backend personal-finance-manager-frontend
+sudo journalctl -u personal-finance-manager-backend -u personal-finance-manager-frontend -f
+```
+
+## Update a Linux deployment
+
+From the deployed checkout, run:
+
+```bash
+./scripts/update.sh
+```
+
+The updater refuses to pull over tracked local changes, performs a fast-forward-only `git pull`,
+re-executes the newly pulled updater, reinstalls locked dependencies, rebuilds, migrates, refreshes
+the systemd units, and restarts both services. `.env`, uploaded CSVs, and PostgreSQL data are not
+replaced.
+
+To deploy source already copied to the server without pulling Git, or to change ports:
+
+```bash
+./scripts/update.sh --no-pull
+./scripts/update.sh --frontend-port 5200 --backend-port 10199
+```
+
+Changing a port automatically updates its generated public URL. For a reverse-proxy deployment,
+pass `--frontend-origin` and/or `--api-url` with the externally visible URLs when changing ports.
+
 ## Import an unknown provider
 
 1. Add the parent account under **Accounts**.

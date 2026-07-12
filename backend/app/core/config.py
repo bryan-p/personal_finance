@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     app_name: str = "personal-finance-manager"
     frontend_host: str = "localhost"
     frontend_port: int = 5000
+    cors_origins: str = ""
     backend_host: str = "localhost"
     backend_port: int = 9999
     backend_reload: bool = True
@@ -44,8 +45,17 @@ class Settings(BaseSettings):
         path = Path(self.upload_storage_dir)
         return path if path.is_absolute() else ROOT / path
 
+    @property
+    def allowed_origins(self) -> list[str]:
+        configured = [origin.strip().rstrip("/") for origin in self.cors_origins.split(",") if origin.strip()]
+        defaults = [
+            f"http://{self.frontend_host}:{self.frontend_port}",
+            f"http://localhost:{self.frontend_port}",
+            f"http://127.0.0.1:{self.frontend_port}",
+        ]
+        return list(dict.fromkeys(configured + defaults))
+
 
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-
