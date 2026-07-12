@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     backend_host: str = "localhost"
     backend_port: int = 9999
     backend_reload: bool = True
+    api_root_path: str = ""
+    cookie_secure: bool = False
     secret_key: str = Field(min_length=12)
     database_host: str = "localhost"
     database_port: int = 5432

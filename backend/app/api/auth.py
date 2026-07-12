@@ -3,6 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.config import get_settings
 from app.core.security import (
     COOKIE_NAME,
     create_access_token,
@@ -24,7 +25,7 @@ def set_session(response: Response, user: User):
         create_access_token(user.id),
         httponly=True,
         samesite="lax",
-        secure=False,
+        secure=get_settings().cookie_secure,
         max_age=7 * 24 * 60 * 60,
     )
 
@@ -61,4 +62,3 @@ def logout(response: Response):
 @router.get("/me", response_model=UserOut)
 def me(user=Depends(get_current_user)):
     return user
-

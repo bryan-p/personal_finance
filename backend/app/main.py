@@ -6,7 +6,7 @@ from app.core.config import get_settings
 
 
 settings = get_settings()
-app = FastAPI(title="Personal Finance Manager API", version="0.1.0")
+app = FastAPI(title="Personal Finance Manager API", version="0.1.0", root_path=settings.api_root_path)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,

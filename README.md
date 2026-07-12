@@ -98,31 +98,79 @@ migrations, starts both development services, prints their URLs, and stops both 
 
 ## Deploy on a Linux server
 
-The production deployment uses two systemd services and does not start or install PostgreSQL.
-Before deploying, install these server prerequisites:
+The deployment script is a complete server bootstrapper. It installs common system packages on
+Debian, Ubuntu, Fedora, RHEL, Rocky Linux, AlmaLinux, or CentOS; creates the dedicated system user
+`fintracker`; makes `/srv/fintracker` that user's home; clones the GitHub repository there; and then
+builds and starts the app with systemd. It does not install or start PostgreSQL—the database in the
+provided environment file must already be reachable.
 
-- Python 3.11+ with the `venv` module
-- Node.js 20+ and npm
-- Git, systemd, and sudo
-- A reachable PostgreSQL database configured in `.env`
-
-Clone the repository as the Linux user that should own and run the app. Create `.env`, use a
-production `SECRET_KEY`, and confirm that the database host is reachable from the server. Then run:
+On a fresh server, download the bootstrap script without cloning the repository first:
 
 ```bash
-./scripts/deploy.sh --public-host finance.example.com
+mkdir fintracker-bootstrap
+cd fintracker-bootstrap
+curl -fsSLO https://raw.githubusercontent.com/bryan-p/personal_finance/master/scripts/deploy.sh
+chmod +x deploy.sh
 ```
 
-The deploy script creates the Python environment, installs locked backend/frontend dependencies,
-builds Next.js with the public API URL, verifies PostgreSQL, runs Alembic migrations, installs and
-enables two systemd services, and starts them. It uses `sudo` only for systemd files and service
-management; the app itself runs as the deployment user.
+The simplest initial setup is interactive:
+
+```bash
+sudo ./deploy.sh --interactive
+```
+
+Interactive mode prompts for the repository URL; public hostname; HTTPS, HTTP, frontend, and
+backend ports; bind address; PostgreSQL host, port, database, user, password, and SSL mode; upload
+limit; service name; and public URLs. Pressing Enter accepts the displayed defaults. The database
+password and application secret prompts do not echo input. Leaving the application secret blank
+generates a cryptographically random value. The completed configuration is installed as
+`/srv/fintracker/.env`, owned by `fintracker`, with mode `0600`.
+
+Before installing packages or changing the server, the script prints the fully resolved deployment
+plan and asks for confirmation. It includes repository and service names, paths, internal and
+public ports, URLs, PostgreSQL host/database/user/SSL mode, virtual-environment location, and
+upload limit. Passwords and signing secrets are always redacted. Use `--yes` to accept the printed
+plan without prompting in an automated deployment.
+
+For non-interactive deployment, either pass a prepared environment file or provide database
+options directly:
+
+```bash
+sudo ./deploy.sh \
+  --env-file ./fintracker.env \
+  --public-host finance.example.com
+
+sudo ./deploy.sh \
+  --public-host finance.example.com \
+  --database-host localhost \
+  --database-name personal_finance_sol \
+  --database-user postgres \
+  --database-password 'replace-me'
+```
+
+The default repository is `https://github.com/bryan-p/personal_finance.git`. Use `--repo-url` to
+deploy a fork. Private repositories must be accessible to the `fintracker` user through a deploy
+key or another non-interactive Git credential before cloning.
+
+The bootstrapper installs Git, rsync, nginx, OpenSSL, Python tooling, Node/npm, and build tools;
+upgrades Node to 22.x when the distribution package is older than Node 20; creates
+`/srv/fintracker/.venv`; installs locked backend/frontend dependencies; builds Next.js; verifies
+PostgreSQL; runs Alembic; and starts `fintracker-backend.service` and
+`fintracker-frontend.service`. The application processes always run as `fintracker`, never as root.
+
+Python application packages are installed only through `/srv/fintracker/.venv/bin/python -m pip`.
+The deployment aborts if that interpreter is not an active virtual environment rooted at the
+expected path. The backend service sets `VIRTUAL_ENV` and places the venv first on `PATH`; it never
+uses globally installed FastAPI, SQLAlchemy, Alembic, or other application packages. Frontend
+packages are similarly project-local under `/srv/fintracker/frontend/node_modules` through
+`npm ci`; only the Node runtime itself is installed system-wide.
 
 Ports can be set in `.env` or supplied on the command line:
 
 ```bash
-./scripts/deploy.sh \
+sudo ./deploy.sh \
   --public-host 192.168.1.20 \
+  --database-password 'replace-me' \
   --frontend-port 5100 \
   --backend-port 10099
 ```
@@ -130,32 +178,42 @@ Ports can be set in `.env` or supplied on the command line:
 Other useful deployment options:
 
 ```text
---bind-host HOST        Bind both services to this address (default 0.0.0.0)
---scheme http|https     Build public URLs with this scheme
+--bind-host HOST        Bind both services to this address (default 127.0.0.1)
+--http-port PORT        Configure nginx HTTP/redirect port (default 80)
+--https-port PORT       Configure nginx HTTPS port (default 443)
+--scheme http|https     Build public URLs with this scheme (default https)
 --frontend-origin URL  Set the complete browser-visible frontend origin
 --api-url URL           Set the complete browser-visible backend URL
 --service-name NAME     Change the systemd service prefix
---user USER             Run services as this Linux user
+--repo-url URL          Clone a different GitHub repository
+--skip-system-packages  Validate rather than install OS prerequisites
 ```
 
-When using HTTPS, place a reverse proxy such as Caddy or nginx in front of the app and pass the
-actual HTTPS frontend origin and API URL. Open only the required firewall ports. If the reverse
-proxy is the only public entry point, bind the app services to `127.0.0.1` and use different proxy
-upstreams for the frontend and backend.
+HTTPS is enabled by default. The bootstrapper creates a self-signed certificate under
+`/etc/fintracker/tls`, installs an nginx server block under `/etc/nginx/conf.d`, redirects HTTP to
+HTTPS, proxies `/` to Next.js, and proxies `/api/` to FastAPI. Internal services bind to
+`127.0.0.1` by default, so only nginx is publicly exposed. If firewalld or UFW is already active,
+the configured HTTP and HTTPS ports are opened. Browsers will warn about the self-signed
+certificate; replace it with a trusted certificate before exposing the service beyond a private
+network.
 
-Deployment settings are saved in ignored `.deploy/config`. Inspect services and logs with:
+After deployment, the script prints the frontend/API/docs URLs, internal upstreams, database
+target, service and log commands, update/restart commands, environment and storage paths, and TLS
+certificate paths. Secrets remain redacted and are only stored in `/srv/fintracker/.env`.
+
+Deployment settings are saved in `/srv/fintracker/.deploy/config`. Inspect services and logs with:
 
 ```bash
-sudo systemctl status personal-finance-manager-backend personal-finance-manager-frontend
-sudo journalctl -u personal-finance-manager-backend -u personal-finance-manager-frontend -f
+sudo systemctl status fintracker-backend fintracker-frontend
+sudo journalctl -u fintracker-backend -u fintracker-frontend -f
 ```
 
 ## Update a Linux deployment
 
-From the deployed checkout, run:
+Run the updater from the deployed checkout:
 
 ```bash
-./scripts/update.sh
+sudo /srv/fintracker/scripts/update.sh
 ```
 
 The updater refuses to pull over tracked local changes, performs a fast-forward-only `git pull`,
@@ -166,12 +224,14 @@ replaced.
 To deploy source already copied to the server without pulling Git, or to change ports:
 
 ```bash
-./scripts/update.sh --no-pull
-./scripts/update.sh --frontend-port 5200 --backend-port 10199
+sudo /srv/fintracker/scripts/update.sh --no-pull
+sudo /srv/fintracker/scripts/update.sh --frontend-port 5200 --backend-port 10199
+sudo /srv/fintracker/scripts/update.sh --http-port 8080 --https-port 8443
 ```
 
-Changing a port automatically updates its generated public URL. For a reverse-proxy deployment,
-pass `--frontend-origin` and/or `--api-url` with the externally visible URLs when changing ports.
+Frontend and backend ports are private nginx upstreams. Changing the public HTTP/HTTPS ports,
+hostname, or scheme updates the generated public frontend/API URLs and rebuilds the frontend.
+Explicit `--frontend-origin` and `--api-url` values take precedence over generated URLs.
 
 ## Import an unknown provider
 
