@@ -126,6 +126,10 @@ password and application secret prompts do not echo input. Leaving the applicati
 generates a cryptographically random value. The completed configuration is installed as
 `/srv/fintracker/.env`, owned by `fintracker`, with mode `0600`.
 
+The public host defaults to the server's primary non-loopback IPv4 address. Detection first uses
+the IPv4 routing table and then falls back to the first IPv4 value reported by `hostname -I`.
+`--public-host` can still override it with another IP address or hostname.
+
 Before installing packages or changing the server, the script prints the fully resolved deployment
 plan and asks for confirmation. It includes repository and service names, paths, internal and
 public ports, URLs, PostgreSQL host/database/user/SSL mode, virtual-environment location, and

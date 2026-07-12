@@ -26,6 +26,20 @@ bootstrap_validate_port() {
   (( value >= 1 && value <= 65535 )) || bootstrap_die "$name must be between 1 and 65535"
 }
 
+detect_local_ipv4() {
+  local address=""
+  if command -v ip >/dev/null 2>&1; then
+    address="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == "src") { print $(i + 1); exit } }')"
+  fi
+  if [[ -z "$address" ]] && command -v hostname >/dev/null 2>&1; then
+    address="$(hostname -I 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ && $i !~ /^127\./) { print $i; exit } }')"
+  fi
+  if [[ -z "$address" ]] && command -v getent >/dev/null 2>&1; then
+    address="$(getent ahostsv4 "$(hostname)" 2>/dev/null | awk '$1 !~ /^127\./ { print $1; exit }')"
+  fi
+  printf '%s' "$address"
+}
+
 as_root() {
   if (( EUID == 0 )); then
     "$@"
@@ -65,7 +79,7 @@ Options:
   --http-port PORT        nginx HTTP/redirect port (default: 80)
   --https-port PORT       nginx HTTPS port (default: 443)
   --bind-host HOST        Internal service bind address (default: 127.0.0.1)
-  --public-host HOST      Browser-visible hostname or IP (default: hostname -f)
+  --public-host HOST      Browser-visible hostname or IP (default: local IPv4)
   --scheme SCHEME         Public scheme, http or https (default: https)
   --frontend-origin URL   Full browser-visible frontend origin
   --api-url URL           Full browser-visible backend base URL
@@ -192,7 +206,7 @@ if [[ "$INTERACTIVE" == true ]]; then
   [[ -z "$ENV_SOURCE" ]] || bootstrap_die "Use either --interactive or --env-file, not both"
   bootstrap_log "Interactive deployment configuration"
   prompt_value GIT_REPO_URL "Git repository URL" "$GIT_REPO_URL"
-  prompt_value PUBLIC_HOST_OVERRIDE "Public hostname or IP" "${PUBLIC_HOST_OVERRIDE:-$(hostname -f 2>/dev/null || hostname)}"
+  prompt_value PUBLIC_HOST_OVERRIDE "Public hostname or IP" "${PUBLIC_HOST_OVERRIDE:-$(detect_local_ipv4)}"
   prompt_value PUBLIC_SCHEME_OVERRIDE "Public scheme (https or http)" "${PUBLIC_SCHEME_OVERRIDE:-https}"
   prompt_value HTTP_PORT_OVERRIDE "nginx HTTP/redirect port" "${HTTP_PORT_OVERRIDE:-80}"
   prompt_value HTTPS_PORT_OVERRIDE "nginx HTTPS port" "${HTTPS_PORT_OVERRIDE:-443}"
@@ -281,7 +295,8 @@ if [[ "$GENERATE_ENV" == true ]]; then
   done
 
   generated_scheme="${PUBLIC_SCHEME_OVERRIDE:-https}"
-  generated_host="${PUBLIC_HOST_OVERRIDE:-$(hostname -f 2>/dev/null || hostname)}"
+  generated_host="${PUBLIC_HOST_OVERRIDE:-$(detect_local_ipv4)}"
+  [[ -n "$generated_host" ]] || bootstrap_die "Unable to detect a local IPv4 address; pass --public-host ADDRESS"
   generated_http_port="${HTTP_PORT_OVERRIDE:-80}"
   generated_https_port="${HTTPS_PORT_OVERRIDE:-443}"
   generated_frontend_port="${FRONTEND_PORT_OVERRIDE:-5000}"
@@ -346,7 +361,7 @@ MAX_UPLOAD_MB_VALUE="${MAX_UPLOAD_MB:-$MAX_UPLOAD_MB_VALUE}"
 
 PLAN_SERVICE_PREFIX="${SERVICE_PREFIX_OVERRIDE:-${SERVICE_PREFIX:-fintracker}}"
 PLAN_BIND_HOST="${BIND_HOST_OVERRIDE:-${DEPLOY_BIND_HOST:-127.0.0.1}}"
-PLAN_PUBLIC_HOST="${PUBLIC_HOST_OVERRIDE:-${DEPLOY_PUBLIC_HOST:-$(hostname -f 2>/dev/null || hostname)}}"
+PLAN_PUBLIC_HOST="${PUBLIC_HOST_OVERRIDE:-${DEPLOY_PUBLIC_HOST:-$(detect_local_ipv4)}}"
 PLAN_PUBLIC_SCHEME="${PUBLIC_SCHEME_OVERRIDE:-${DEPLOY_PUBLIC_SCHEME:-https}}"
 PLAN_FRONTEND_PORT="${FRONTEND_PORT_OVERRIDE:-${FRONTEND_PORT:-5000}}"
 PLAN_BACKEND_PORT="${BACKEND_PORT_OVERRIDE:-${BACKEND_PORT:-9999}}"
@@ -370,6 +385,7 @@ for internal_port in "$PLAN_FRONTEND_PORT" "$PLAN_BACKEND_PORT"; do
   [[ "$internal_port" != "$PLAN_HTTP_PORT" && "$internal_port" != "$PLAN_HTTPS_PORT" ]] || bootstrap_die "Internal application ports must differ from nginx ports"
 done
 [[ "$PLAN_PUBLIC_SCHEME" == "http" || "$PLAN_PUBLIC_SCHEME" == "https" ]] || bootstrap_die "Public scheme must be http or https"
+[[ -n "$PLAN_PUBLIC_HOST" ]] || bootstrap_die "Unable to detect a local IPv4 address; pass --public-host ADDRESS"
 [[ "$PLAN_PUBLIC_HOST" =~ ^[A-Za-z0-9._:-]+$ ]] || bootstrap_die "Public hostname contains unsupported characters"
 [[ "$PLAN_SERVICE_PREFIX" =~ ^[A-Za-z0-9_.@-]+$ ]] || bootstrap_die "Service name contains unsupported characters"
 [[ -n "$DATABASE_HOST_VALUE" && -n "$DATABASE_NAME_VALUE" && -n "$DATABASE_USER_VALUE" && -n "$DATABASE_PASSWORD_VALUE" ]] || bootstrap_die "Database host, name, user, and password are required"
@@ -512,7 +528,7 @@ validate_app_env
 DEPLOY_USER="$APP_USER"
 SERVICE_PREFIX="${SERVICE_PREFIX_OVERRIDE:-${SERVICE_PREFIX:-fintracker}}"
 BIND_HOST="${BIND_HOST_OVERRIDE:-${DEPLOY_BIND_HOST:-127.0.0.1}}"
-PUBLIC_HOST="${PUBLIC_HOST_OVERRIDE:-${DEPLOY_PUBLIC_HOST:-$(hostname -f 2>/dev/null || hostname)}}"
+PUBLIC_HOST="${PUBLIC_HOST_OVERRIDE:-${DEPLOY_PUBLIC_HOST:-$(detect_local_ipv4)}}"
 PUBLIC_SCHEME="${PUBLIC_SCHEME_OVERRIDE:-${DEPLOY_PUBLIC_SCHEME:-https}}"
 FRONTEND_PORT="${FRONTEND_PORT_OVERRIDE:-${FRONTEND_PORT:-5000}}"
 BACKEND_PORT="${BACKEND_PORT_OVERRIDE:-${BACKEND_PORT:-9999}}"
