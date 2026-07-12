@@ -340,6 +340,7 @@ EOF
   rm -f "$temp_file"
   run_root nginx -t
   run_root systemctl enable --now nginx
+  run_root systemctl reload nginx
 
   if command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active --quiet firewalld; then
     run_root firewall-cmd --permanent --add-port="${HTTP_PORT}/tcp"
