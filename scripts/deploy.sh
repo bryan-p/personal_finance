@@ -503,7 +503,6 @@ else
     --exclude=.env \
     --exclude=.deploy/ \
     --exclude=.ssh/ \
-    --exclude=backend/storage/imports/ \
     "$TEMP_CLONE_DIR/repository/" "$APP_HOME/"
   as_root chown -R "$APP_USER:$APP_GROUP" "$APP_HOME"
   rm -rf "$TEMP_CLONE_DIR"
