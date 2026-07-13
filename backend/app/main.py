@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import accounts, auth, categories, dashboard, imports, recurring, rules, transactions
+from app.api import accounts, auth, categories, dashboard, imports, institutions, recurring, rules, transactions
 from app.core.config import get_settings
 
 
@@ -17,6 +17,7 @@ app.add_middleware(
 
 for api_router in (
     auth.router,
+    institutions.router,
     accounts.router,
     imports.router,
     transactions.router,

@@ -26,9 +26,13 @@ try:
     assert response.status_code == 201, response.text
     assert len(client.get("/categories").json()) == 16
 
+    response = client.post("/institutions", json={"display_name": "Example Bank"})
+    assert response.status_code == 201, response.text
+    institution_id = response.json()["id"]
+
     response = client.post(
         "/accounts",
-        json={"name": "Test Card", "provider_name": "Example Bank", "account_type": "credit_card", "currency": "USD", "is_active": True},
+        json={"name": "Test Card", "institution_id": institution_id, "account_type": "credit_card", "currency": "USD", "is_active": True},
     )
     assert response.status_code == 201, response.text
     account_id = response.json()["id"]
@@ -55,7 +59,7 @@ try:
     response = client.post(
         f"/imports/{import_id}/mapping",
         json={
-            "provider_name": "Example Bank",
+            "institution_id": institution_id,
             "account_type": "credit_card",
             "mapping_name": "Smoke mapping",
             "date_column": "Date",

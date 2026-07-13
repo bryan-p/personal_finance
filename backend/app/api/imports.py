@@ -15,6 +15,7 @@ from app.models import (
     ImportFile,
     ImportMapping,
     ImportStatus,
+    Institution,
     ReviewStatus,
     Transaction,
 )
@@ -27,6 +28,7 @@ from app.services.imports.parsing import (
     header_signature,
     parse_csv,
 )
+from app.services.institutions import normalize_institution_name
 
 
 router = APIRouter(tags=["imports"])
@@ -37,7 +39,8 @@ def import_summary(item: ImportFile):
     return {
         "id": item.id,
         "account_id": item.account_id,
-        "provider_name": item.provider_name,
+        "institution_id": item.institution_id,
+        "institution_name": item.institution.display_name if item.institution else None,
         "account_type": item.account_type,
         "original_filename": item.original_filename,
         "file_hash": item.file_hash,
@@ -85,17 +88,35 @@ async def upload_import(
         ).order_by(ImportMapping.updated_at.desc())
     )
     detected_provider, provider_confidence = detect_provider(headers)
+    detected_institution = None
+    if detected_provider:
+        detected_institution = db.scalar(
+            select(Institution).where(
+                Institution.user_id == user.id,
+                Institution.normalized_name == normalize_institution_name(detected_provider),
+            )
+        )
     proposed = (
-        {name: getattr(saved, name) for name in MappingIn.model_fields if hasattr(saved, name)}
+        {
+            name: getattr(saved, name)
+            for name in MappingIn.model_fields
+            if name != "institution_id" and hasattr(saved, name)
+        }
         if saved
         else detect_mapping(headers, rows[:10])
     )
-    provider = saved.provider_name if saved else detected_provider or account.provider_name
+    institution_id = (
+        saved.institution_id
+        if saved
+        else detected_institution.id
+        if detected_institution
+        else account.institution_id
+    )
     settings.upload_path.mkdir(parents=True, exist_ok=True)
     item = ImportFile(
         user_id=user.id,
         account_id=account.id,
-        provider_name=provider,
+        institution_id=institution_id,
         account_type=account.account_type,
         original_filename=Path(file.filename).name,
         storage_path="",
@@ -120,7 +141,8 @@ async def upload_import(
         "header_signature": signature,
         "proposed_mapping": proposed,
         "provider_detection": {
-            "provider_name": detected_provider,
+            "institution_name": detected_provider,
+            "institution_id": detected_institution.id if detected_institution else None,
             "confidence": provider_confidence,
             "saved_mapping_id": saved.id if saved else None,
         },
@@ -157,11 +179,14 @@ def preview_import(import_id: UUID, db: Session = Depends(get_db), user=Depends(
 @router.post("/imports/{import_id}/mapping", response_model=MappingOut)
 def save_import_mapping(import_id: UUID, payload: MappingIn, db: Session = Depends(get_db), user=Depends(get_current_user)):
     item = owned_or_404(db, ImportFile, import_id, user.id)
+    institution = owned_or_404(db, Institution, payload.institution_id, user.id)
     values = payload.model_dump()
     values["header_signature"] = header_signature(item.headers_json)
     mapping = ImportMapping(user_id=user.id, **values)
+    mapping.institution = institution
     db.add(mapping)
-    item.provider_name = mapping.provider_name
+    item.institution_id = mapping.institution_id
+    item.institution = institution
     item.account_type = mapping.account_type
     item.status = ImportStatus.mapped
     db.commit()
@@ -296,7 +321,9 @@ def list_mappings(db: Session = Depends(get_db), user=Depends(get_current_user))
 def create_mapping(payload: MappingIn, db: Session = Depends(get_db), user=Depends(get_current_user)):
     if not payload.header_signature:
         raise HTTPException(status_code=422, detail="header_signature is required")
+    institution = owned_or_404(db, Institution, payload.institution_id, user.id)
     item = ImportMapping(user_id=user.id, **payload.model_dump())
+    item.institution = institution
     db.add(item)
     db.commit()
     return item
@@ -305,6 +332,8 @@ def create_mapping(payload: MappingIn, db: Session = Depends(get_db), user=Depen
 @router.patch("/mappings/{mapping_id}", response_model=MappingOut)
 def update_mapping(mapping_id: UUID, payload: MappingPatch, db: Session = Depends(get_db), user=Depends(get_current_user)):
     item = owned_or_404(db, ImportMapping, mapping_id, user.id)
+    if "institution_id" in payload.model_fields_set and payload.institution_id:
+        item.institution = owned_or_404(db, Institution, payload.institution_id, user.id)
     apply_changes(item, payload)
     db.commit()
     return item
@@ -316,4 +345,3 @@ def delete_mapping(mapping_id: UUID, db: Session = Depends(get_db), user=Depends
     db.delete(item)
     db.commit()
     return {"message": "Mapping deleted"}
-

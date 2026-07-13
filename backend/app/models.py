@@ -145,17 +145,30 @@ class User(Base, IdMixin, TimestampMixin):
     display_name: Mapped[str] = mapped_column(String(120))
 
 
+class Institution(Base, IdMixin, TimestampMixin):
+    __tablename__ = "institutions"
+    __table_args__ = (UniqueConstraint("user_id", "normalized_name"),)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    display_name: Mapped[str] = mapped_column(String(160))
+    normalized_name: Mapped[str] = mapped_column(String(160))
+    is_system: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
 class Account(Base, IdMixin, TimestampMixin):
     __tablename__ = "accounts"
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(160))
-    provider_name: Mapped[str | None] = mapped_column(String(160))
+    institution_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("institutions.id", ondelete="SET NULL"), index=True
+    )
     account_type: Mapped[AccountType] = mapped_column(enum_type(AccountType))
     last_four: Mapped[str | None] = mapped_column(String(4))
     currency: Mapped[str] = mapped_column(String(3), default="USD")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     statement_cycle_day: Mapped[int | None] = mapped_column(Integer)
     payment_due_day: Mapped[int | None] = mapped_column(Integer)
+    institution = relationship("Institution", lazy="joined")
     instruments = relationship("AccountInstrument", cascade="all, delete-orphan")
 
 
@@ -176,7 +189,9 @@ class ImportFile(Base, IdMixin, TimestampMixin):
     __tablename__ = "import_files"
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
-    provider_name: Mapped[str | None] = mapped_column(String(160))
+    institution_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("institutions.id", ondelete="SET NULL"), index=True
+    )
     account_type: Mapped[AccountType | None] = mapped_column(enum_type(AccountType))
     original_filename: Mapped[str] = mapped_column(String(255))
     storage_path: Mapped[str] = mapped_column(String(500))
@@ -191,12 +206,13 @@ class ImportFile(Base, IdMixin, TimestampMixin):
     sample_rows_json: Mapped[list] = mapped_column(JSON, default=list)
     proposed_mapping_json: Mapped[dict] = mapped_column(JSON, default=dict)
     is_duplicate_file: Mapped[bool] = mapped_column(Boolean, default=False)
+    institution = relationship("Institution", lazy="joined")
 
 
 class ImportMapping(Base, IdMixin, TimestampMixin):
     __tablename__ = "import_mappings"
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    provider_name: Mapped[str] = mapped_column(String(160))
+    institution_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("institutions.id"), index=True)
     account_type: Mapped[AccountType] = mapped_column(enum_type(AccountType))
     mapping_name: Mapped[str] = mapped_column(String(160))
     header_signature: Mapped[str] = mapped_column(String(64), index=True)
@@ -215,6 +231,7 @@ class ImportMapping(Base, IdMixin, TimestampMixin):
     cardholder_name_column: Mapped[str | None] = mapped_column(String(255))
     account_suffix_column: Mapped[str | None] = mapped_column(String(255))
     amount_behavior: Mapped[AmountBehavior] = mapped_column(enum_type(AmountBehavior))
+    institution = relationship("Institution", lazy="joined")
 
 
 class Category(Base, IdMixin, TimestampMixin):
@@ -243,12 +260,13 @@ class Subcategory(Base, IdMixin, TimestampMixin):
 
 class ProviderCategoryMapping(Base, IdMixin, TimestampMixin):
     __tablename__ = "provider_category_mappings"
-    __table_args__ = (UniqueConstraint("user_id", "provider_name", "source_category"),)
+    __table_args__ = (UniqueConstraint("user_id", "institution_id", "source_category"),)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    provider_name: Mapped[str] = mapped_column(String(160))
+    institution_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("institutions.id"), index=True)
     source_category: Mapped[str] = mapped_column(String(160))
     category_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("categories.id"))
     subcategory_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("subcategories.id"))
+    institution = relationship("Institution", lazy="joined")
 
 
 class Rule(Base, IdMixin, TimestampMixin):
@@ -326,4 +344,3 @@ class RecurringSeries(Base, IdMixin, TimestampMixin):
     last_seen_date: Mapped[date] = mapped_column(Date)
     next_expected_date: Mapped[date | None] = mapped_column(Date)
     notes: Mapped[str | None] = mapped_column(Text)
-

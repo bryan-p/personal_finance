@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import apply_changes, owned_or_404
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.models import Account, AccountInstrument
+from app.models import Account, AccountInstrument, Institution
 from app.schemas import (
     APIMessage,
     AccountIn,
@@ -29,7 +29,11 @@ def list_accounts(db: Session = Depends(get_db), user=Depends(get_current_user))
 
 @router.post("/accounts", response_model=AccountOut, status_code=201)
 def create_account(payload: AccountIn, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    institution = None
+    if payload.institution_id:
+        institution = owned_or_404(db, Institution, payload.institution_id, user.id)
     item = Account(user_id=user.id, **payload.model_dump())
+    item.institution = institution
     db.add(item)
     db.commit()
     return item
@@ -43,6 +47,12 @@ def get_account(account_id: UUID, db: Session = Depends(get_db), user=Depends(ge
 @router.patch("/accounts/{account_id}", response_model=AccountOut)
 def update_account(account_id: UUID, payload: AccountPatch, db: Session = Depends(get_db), user=Depends(get_current_user)):
     item = owned_or_404(db, Account, account_id, user.id)
+    if "institution_id" in payload.model_fields_set:
+        item.institution = (
+            owned_or_404(db, Institution, payload.institution_id, user.id)
+            if payload.institution_id
+            else None
+        )
     apply_changes(item, payload)
     db.commit()
     return item
@@ -94,4 +104,3 @@ def disable_instrument(instrument_id: UUID, db: Session = Depends(get_db), user=
     item.is_active = False
     db.commit()
     return {"message": "Account instrument disabled"}
-

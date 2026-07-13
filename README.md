@@ -8,8 +8,8 @@ PostgreSQL stores all user data locally.
 The MVP includes:
 
 - Email/password registration, cookie sessions, and per-user data isolation.
-- Parent financial accounts plus optional cards, authorized users, and profiles.
-- Starter categories/subcategories, custom categories, provider category mappings, and rules.
+- Canonical financial institutions plus parent accounts and optional cards, authorized users, and profiles.
+- Starter categories/subcategories, custom categories, institution category mappings, and rules.
 - Resumable imports with file hashes, header/provider detection, reusable mappings, draft rows,
   safe card attribution, duplicate flags, inline review, confirmation, and cancellation.
 - Confirmed transaction search/edit/filter, filtered CSV export, monthly dashboard, and recurring
@@ -82,6 +82,19 @@ createdb --host=localhost --port=5432 --username=postgres personal_finance_sol
 
 Alembic owns the schema. Add future revisions under `backend/migrations/versions/` and do not use
 runtime `create_all` calls in the application.
+
+## Financial institutions
+
+Each user receives a starter list of major U.S. banks and card issuers, including Chase, Wells
+Fargo, Bank of America, American Express, Capital One, Citi, and Discover. Accounts select a
+canonical institution instead of storing a free-form provider name. Additional banks and credit
+unions can be added from the account or CSV mapping flow.
+
+Institution display names preserve normal capitalization. A separate case-insensitive,
+whitespace-normalized database value prevents duplicates such as `Chase`, `CHASE`, and
+`  Chase  `. Accounts, import files, reusable CSV mappings, and institution category mappings all
+reference the same institution record. Account names remain free-form and should describe the
+specific product, such as `Chase Sapphire Preferred` or `Primary Checking`.
 
 ## Start both services
 
@@ -237,16 +250,16 @@ Frontend and backend ports are private nginx upstreams. Changing the public HTTP
 hostname, or scheme updates the generated public frontend/API URLs and rebuilds the frontend.
 Explicit `--frontend-origin` and `--api-url` values take precedence over generated URLs.
 
-## Import an unknown provider
+## Import an unknown institution format
 
 1. Add the parent account under **Accounts**.
 2. Open **Import CSV**, select the account, and upload the export.
 3. Ledgerly parses the header/sample rows, checks the file hash, looks for a saved header signature,
    and otherwise proposes a generic mapping.
-4. Confirm or rename the provider, account type, amount convention, required columns, and optional
-   category/ID/card/profile columns.
+4. Select the institution—or add it if it is not listed—then confirm the account type, amount
+   convention, required columns, and optional category/ID/card/profile columns.
 5. Save the mapping. Its normalized header signature is reused for future files with the same
-   format; saved mappings can be renamed, reassigned to a provider, or deleted from **Import CSV**.
+   format; saved mappings can be renamed or deleted from **Import CSV**.
 6. Review every draft row, including rule-applied values, duplicates, exclusions, and card/profile
    assignments, then confirm the import.
 
@@ -301,7 +314,7 @@ npm audit
 
 ## Known limitations
 
-- Provider similarity currently requires an exact normalized header signature; fuzzy saved-mapping
+- Institution-format similarity currently requires an exact normalized header signature; fuzzy saved-mapping
   matching is a next refinement.
 - Rules apply the first priority match rather than composing multiple matching rules.
 - Merchant-history categorization and cross-account transfer matching are not implemented.

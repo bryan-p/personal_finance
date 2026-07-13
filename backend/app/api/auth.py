@@ -14,6 +14,7 @@ from app.core.security import (
 from app.models import User
 from app.schemas import APIMessage, LoginIn, RegisterIn, UserOut
 from app.services.categories import seed_categories
+from app.services.institutions import seed_institutions
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -39,6 +40,7 @@ def register(payload: RegisterIn, response: Response, db: Session = Depends(get_
     db.add(user)
     db.flush()
     seed_categories(db, user.id)
+    seed_institutions(db, user.id)
     db.commit()
     set_session(response, user)
     return user

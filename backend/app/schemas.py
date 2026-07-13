@@ -41,9 +41,27 @@ class LoginIn(BaseModel):
     password: str
 
 
+class InstitutionIn(BaseModel):
+    display_name: str = Field(min_length=1, max_length=160)
+
+
+class InstitutionPatch(BaseModel):
+    display_name: str | None = Field(default=None, min_length=1, max_length=160)
+    is_active: bool | None = None
+
+
+class InstitutionOut(InstitutionIn, ORMModel):
+    id: UUID
+    normalized_name: str
+    is_system: bool
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
 class AccountIn(BaseModel):
     name: str = Field(min_length=1, max_length=160)
-    provider_name: str | None = None
+    institution_id: UUID | None = None
     account_type: AccountType
     last_four: str | None = Field(default=None, pattern=r"^\d{4}$")
     currency: str = Field(default="USD", min_length=3, max_length=3)
@@ -54,7 +72,7 @@ class AccountIn(BaseModel):
 
 class AccountPatch(BaseModel):
     name: str | None = None
-    provider_name: str | None = None
+    institution_id: UUID | None = None
     account_type: AccountType | None = None
     last_four: str | None = Field(default=None, pattern=r"^\d{4}$")
     currency: str | None = None
@@ -65,6 +83,7 @@ class AccountPatch(BaseModel):
 
 class AccountOut(AccountIn, ORMModel):
     id: UUID
+    institution: InstitutionOut | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -102,7 +121,7 @@ MAPPING_FIELDS = [
 
 
 class MappingIn(BaseModel):
-    provider_name: str
+    institution_id: UUID
     account_type: AccountType
     mapping_name: str
     header_signature: str | None = None
@@ -137,7 +156,7 @@ class MappingIn(BaseModel):
 
 
 class MappingPatch(BaseModel):
-    provider_name: str | None = None
+    institution_id: UUID | None = None
     account_type: AccountType | None = None
     mapping_name: str | None = None
     header_signature: str | None = None
@@ -160,6 +179,7 @@ class MappingPatch(BaseModel):
 
 class MappingOut(MappingIn, ORMModel):
     id: UUID
+    institution: InstitutionOut
     header_signature: str
     created_at: datetime
     updated_at: datetime
@@ -273,10 +293,17 @@ class BulkTransactionPatch(BaseModel):
 
 
 class ProviderCategoryMappingIn(BaseModel):
-    provider_name: str
+    institution_id: UUID
     source_category: str
     category_id: UUID
     subcategory_id: UUID | None = None
+
+
+class ProviderCategoryMappingOut(ProviderCategoryMappingIn, ORMModel):
+    id: UUID
+    institution: InstitutionOut
+    created_at: datetime
+    updated_at: datetime
 
 
 class RecurringManualIn(BaseModel):

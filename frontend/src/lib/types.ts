@@ -1,9 +1,18 @@
 export type AccountType = "checking" | "savings" | "credit_card" | "cash" | "other";
 
+export interface Institution {
+  id: string;
+  display_name: string;
+  normalized_name: string;
+  is_system: boolean;
+  is_active: boolean;
+}
+
 export interface Account {
   id: string;
   name: string;
-  provider_name?: string;
+  institution_id?: string;
+  institution?: Institution;
   account_type: AccountType;
   last_four?: string;
   currency: string;
@@ -27,7 +36,7 @@ export interface Subcategory { id: string; category_id: string; name: string; is
 export interface Category { id: string; name: string; description?: string; is_active: boolean; is_system: boolean; subcategories: Subcategory[]; }
 
 export interface ImportRecord {
-  id: string; account_id: string; original_filename: string; provider_name?: string; account_type?: AccountType; status: string;
+  id: string; account_id: string; original_filename: string; institution_id?: string; institution_name?: string; account_type?: AccountType; status: string;
   row_count: number; duplicate_row_count: number; imported_row_count: number; is_duplicate_file: boolean;
   created_at: string; headers?: string[]; sample_rows?: Record<string, string>[]; proposed_mapping?: Record<string, string>;
   header_signature?: string;

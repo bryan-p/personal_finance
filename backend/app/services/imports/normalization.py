@@ -122,7 +122,7 @@ def normalize_import(db: Session, import_file: ImportFile, mapping: ImportMappin
         for item in db.scalars(
             select(ProviderCategoryMapping).where(
                 ProviderCategoryMapping.user_id == import_file.user_id,
-                ProviderCategoryMapping.provider_name == mapping.provider_name,
+                ProviderCategoryMapping.institution_id == mapping.institution_id,
             )
         ).all()
     }

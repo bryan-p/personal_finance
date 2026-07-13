@@ -7,13 +7,14 @@ from sqlalchemy.orm import Session, selectinload
 from app.api.deps import apply_changes, owned_or_404
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.models import Category, ProviderCategoryMapping, Subcategory
+from app.models import Category, Institution, ProviderCategoryMapping, Subcategory
 from app.schemas import (
     APIMessage,
     CategoryIn,
     CategoryOut,
     CategoryPatch,
     ProviderCategoryMappingIn,
+    ProviderCategoryMappingOut,
     SubcategoryIn,
     SubcategoryOut,
 )
@@ -78,16 +79,17 @@ def disable_subcategory(subcategory_id: UUID, db: Session = Depends(get_db), use
     return {"message": "Subcategory disabled"}
 
 
-@router.get("/provider-category-mappings")
+@router.get("/provider-category-mappings", response_model=list[ProviderCategoryMappingOut])
 def list_provider_mappings(db: Session = Depends(get_db), user=Depends(get_current_user)):
     return db.scalars(select(ProviderCategoryMapping).where(ProviderCategoryMapping.user_id == user.id)).all()
 
 
-@router.post("/provider-category-mappings", status_code=201)
+@router.post("/provider-category-mappings", response_model=ProviderCategoryMappingOut, status_code=201)
 def create_provider_mapping(payload: ProviderCategoryMappingIn, db: Session = Depends(get_db), user=Depends(get_current_user)):
     owned_or_404(db, Category, payload.category_id, user.id)
+    institution = owned_or_404(db, Institution, payload.institution_id, user.id)
     item = ProviderCategoryMapping(user_id=user.id, **payload.model_dump())
+    item.institution = institution
     db.add(item)
     db.commit()
     return item
-
