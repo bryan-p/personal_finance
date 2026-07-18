@@ -18,7 +18,6 @@ from app.models import User  # noqa: E402
 email = f"smoke-{uuid.uuid4()}@example.com"
 client = TestClient(app)
 import_id = None
-statement_document_id = None
 deletable_import_ids = []
 try:
     response = client.post(
@@ -112,9 +111,7 @@ try:
     assert client.get("/transactions/export").status_code == 200
     assert client.get("/dashboard/summary?start_date=2026-07-01&end_date=2026-07-31").status_code == 200
     assert client.get(f"/dashboard/instrument-summary?account_id={account_id}&start_date=2026-07-01&end_date=2026-07-31").status_code == 200
-<<<<<<< Updated upstream
     assert client.delete(f"/institutions/{institution_id}").status_code == 405
-=======
     assert client.delete(f"/imports/{import_id}").status_code == 409
 
     cancelled_content = b"Date,Description,Amount\n2026-07-10,CANCELLED TEST,1.00\n"
@@ -165,7 +162,6 @@ try:
     assert response.status_code == 200, response.text
     assert client.get(f"/imports/{failed_import_id}").status_code == 404
     assert not failed_path.exists()
->>>>>>> Stashed changes
 
     impact = client.get(f"/accounts/{account_id}/deletion-impact")
     assert impact.status_code == 200, impact.text

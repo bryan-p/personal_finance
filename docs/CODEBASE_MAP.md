@@ -55,7 +55,7 @@ graph TB
 
 ```
 .
-├── README.md                    Product overview, setup, deploy docs (⚠ committed conflict markers at HEAD)
+├── README.md                    Product overview, setup, deploy docs
 ├── .env.example                 Canonical env var template
 ├── backend/
 │   ├── app/
@@ -122,7 +122,7 @@ graph TB
     ├── run_migrations.sh         alembic upgrade head wrapper (via python -m)
     ├── check_db.py                DB connectivity pre-flight check
     ├── create_db.py               Idempotent DB creation helper
-    ├── smoke_test.py              Manual end-to-end API smoke test (⚠ broken at HEAD — conflict markers)
+    ├── smoke_test.py              Manual end-to-end API smoke test
     └── lib/deploy_common.sh      Shared install/build/migrate/systemd/nginx pipeline
 ```
 
@@ -250,7 +250,7 @@ All four use optimistic local-row removal on success, reload on error, `Trash2` 
 | `run_migrations.sh` | `python -m alembic upgrade head` wrapper (does not source `.env` itself) | 55 |
 | `check_db.py` | DB connectivity pre-flight (`SELECT 1`) | 133 |
 | `create_db.py` | Idempotent `CREATE DATABASE` helper (run from repo root) | 178 |
-| `smoke_test.py` | Manual end-to-end API test via `TestClient` against a real local DB; extended to cover all deletion flows — **currently broken at HEAD (committed conflict markers → SyntaxError)** | 2260 |
+| `smoke_test.py` | Manual end-to-end API test via `TestClient` against a real local DB; covers the full import pipeline plus all deletion flows (drafts, transactions, failed/cancelled imports, account cascade w/ CSV cleanup) | 2260 |
 
 **Exports**: None (standalone scripts).
 **Dependencies**: `deploy_common.sh` sources nothing besides shell builtins/system tools; `check_db.py`/`create_db.py`/`smoke_test.py` import `app.core.config`/`app.main`/`app.models` directly.
@@ -394,7 +394,6 @@ sequenceDiagram
 
 ## Gotchas
 
-- **⚠ Committed merge-conflict markers at HEAD (`d6715e2`)**: `scripts/smoke_test.py` (lines 21–25, 118–171) and `README.md` (lines 14–27) contain literal `<<<<<<< Updated upstream` / `=======` / `>>>>>>> Stashed changes` blocks. `smoke_test.py` is not valid Python (immediate `SyntaxError`), and the README's feature list renders garbled. Resolve before relying on either file.
 - **Two different file-deletion strategies**: `accounts.py` uses `services/deletions.py`'s crash-safe stage → commit → purge (restore on DB failure); `imports.py` deletes the DB row then `unlink()`s directly with no restore path. If a post-commit purge/unlink fails, the API returns 500 but **the DB rows are already gone** — account CSVs sit orphaned in `storage/imports/.trash/<uuid>/` for manual cleanup.
 - **Deleting any account or transaction purges ALL of the user's `suggested` RecurringSeries** (not just ones tied to the deleted rows), because suggestions are derived from the full transaction set. This logic is duplicated in `accounts.py` and `transactions.py`, not shared.
 - **Duplicated business rules**: transfer/payment/adjustment auto-exclusion-from-spending logic is duplicated between `imports.py` and `transactions.py` (not centralized in a service).

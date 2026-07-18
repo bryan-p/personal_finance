@@ -11,20 +11,12 @@ The MVP includes:
 - Canonical financial institutions plus parent accounts and optional cards, authorized users, and profiles.
 - Starter categories/subcategories, custom categories, institution category mappings, and rules.
 - Resumable imports with file hashes, header/provider detection, reusable mappings, draft rows,
-<<<<<<< Updated upstream
-  safe card attribution, duplicate flags, inline review, confirmation, and cancellation.
+  safe card attribution, duplicate flags, inline review, confirmation, cancellation, and cleanup of
+  failed or cancelled imports and their stored CSV files.
 - Confirmed transaction search/edit/filter, single and bulk deletion, filtered CSV export, monthly
   dashboard, and recurring charge suggestions that always require approval.
 - Permanent account deletion removes its cards/profiles, draft and confirmed transactions, import
   history, and locally stored CSV uploads while preserving the reusable institution configuration.
-=======
-  safe card attribution, duplicate flags, inline review, confirmation, cancellation, and cleanup of
-  failed or cancelled imports and their stored CSV files.
-- Confirmed transaction search/edit/filter, filtered CSV export, monthly dashboard, and recurring
-  charge suggestions that always require approval.
-- Credit-card statement cycles with retained PDF statements, local text extraction, editable
-  proposed balances/dates, and explicit user confirmation.
->>>>>>> Stashed changes
 
 It does not include budgets, bank APIs, Plaid, PDF/OCR imports, cloud sync, backups, investments,
 mobile clients, household sharing, 2FA, rate limiting, or automatic cross-account transfer matching.
