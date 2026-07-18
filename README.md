@@ -12,8 +12,10 @@ The MVP includes:
 - Starter categories/subcategories, custom categories, institution category mappings, and rules.
 - Resumable imports with file hashes, header/provider detection, reusable mappings, draft rows,
   safe card attribution, duplicate flags, inline review, confirmation, and cancellation.
-- Confirmed transaction search/edit/filter, filtered CSV export, monthly dashboard, and recurring
-  charge suggestions that always require approval.
+- Confirmed transaction search/edit/filter, single and bulk deletion, filtered CSV export, monthly
+  dashboard, and recurring charge suggestions that always require approval.
+- Permanent account deletion removes its cards/profiles, draft and confirmed transactions, import
+  history, and locally stored CSV uploads while preserving the reusable institution configuration.
 
 It does not include budgets, bank APIs, Plaid, PDF/OCR imports, cloud sync, backups, investments,
 mobile clients, household sharing, 2FA, rate limiting, or automatic cross-account transfer matching.
@@ -47,7 +49,7 @@ DATABASE_NAME=personal_finance_sol
 ```
 
 `UPLOAD_STORAGE_DIR` points to ignored local CSV storage. Uploaded originals are never sent to a
-third party.
+third party and are removed when their account is permanently deleted.
 
 ## Install dependencies
 
@@ -55,7 +57,7 @@ One-time setup:
 
 ```bash
 python3 -m venv .venv
-./.venv/bin/pip install -r backend/requirements.txt
+./.venv/bin/python -m pip install -r backend/requirements.txt
 npm --prefix frontend install
 ```
 
@@ -95,6 +97,7 @@ whitespace-normalized database value prevents duplicates such as `Chase`, `CHASE
 `  Chase  `. Accounts, import files, reusable CSV mappings, and institution category mappings all
 reference the same institution record. Account names remain free-form and should describe the
 specific product, such as `Chase Sapphire Preferred` or `Primary Checking`.
+Institutions are durable reference records and do not have a delete action.
 
 ## Start both services
 
@@ -261,7 +264,7 @@ Explicit `--frontend-origin` and `--api-url` values take precedence over generat
 5. Save the mapping. Its normalized header signature is reused for future files with the same
    format; saved mappings can be renamed or deleted from **Import CSV**.
 6. Review every draft row, including rule-applied values, duplicates, exclusions, and card/profile
-   assignments, then confirm the import.
+   assignments. Draft rows can be deleted individually or in bulk before confirming the import.
 
 Generic mappings handle signed amounts, charge-positive/negative conventions, separate debit and
 credit columns, dates, descriptions, merchants, provider categories, IDs, notes, and card/profile
@@ -318,7 +321,8 @@ npm audit
   matching is a next refinement.
 - Rules apply the first priority match rather than composing multiple matching rules.
 - Merchant-history categorization and cross-account transfer matching are not implemented.
-- Batch review supports the API, while richer frontend multi-select controls remain to be added.
+- Draft and confirmed transaction tables support explicit row selection and bulk deletion of the
+  displayed results.
 - The recurring detector groups normalized merchant/description text exactly; advanced merchant
   aliases are future work.
 - The first migration creates the baseline schema from SQLAlchemy metadata. Future schema changes

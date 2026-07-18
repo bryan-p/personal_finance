@@ -21,6 +21,17 @@ export interface Account {
   payment_due_day?: number;
 }
 
+export interface AccountDeletionImpact {
+  account_id: string;
+  account_name: string;
+  transaction_count: number;
+  draft_transaction_count: number;
+  instrument_count: number;
+  import_count: number;
+  upload_file_count: number;
+  deleted_file_count?: number;
+}
+
 export interface Instrument {
   id: string;
   account_id: string;

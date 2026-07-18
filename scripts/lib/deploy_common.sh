@@ -198,7 +198,7 @@ Environment="NEXT_PUBLIC_API_BASE_URL=${PUBLIC_API_URL}"
 Environment="CORS_ORIGINS=${FRONTEND_ORIGIN}"
 Environment="VIRTUAL_ENV=${ROOT_DIR}/.venv"
 Environment="PATH=${ROOT_DIR}/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-ExecStart=${ROOT_DIR}/.venv/bin/uvicorn app.main:app --host ${BIND_HOST} --port ${BACKEND_PORT} --root-path /api
+ExecStart=${ROOT_DIR}/.venv/bin/python -m uvicorn app.main:app --host ${BIND_HOST} --port ${BACKEND_PORT} --root-path /api
 Restart=on-failure
 RestartSec=3
 TimeoutStopSec=30

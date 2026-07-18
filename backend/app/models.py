@@ -169,7 +169,7 @@ class Account(Base, IdMixin, TimestampMixin):
     statement_cycle_day: Mapped[int | None] = mapped_column(Integer)
     payment_due_day: Mapped[int | None] = mapped_column(Integer)
     institution = relationship("Institution", lazy="joined")
-    instruments = relationship("AccountInstrument", cascade="all, delete-orphan")
+    instruments = relationship("AccountInstrument", cascade="all, delete-orphan", passive_deletes=True)
 
 
 class AccountInstrument(Base, IdMixin, TimestampMixin):

@@ -88,6 +88,20 @@ class AccountOut(AccountIn, ORMModel):
     updated_at: datetime
 
 
+class AccountDeletionImpact(BaseModel):
+    account_id: UUID
+    account_name: str
+    transaction_count: int
+    draft_transaction_count: int
+    instrument_count: int
+    import_count: int
+    upload_file_count: int
+
+
+class AccountDeletionResult(AccountDeletionImpact):
+    deleted_file_count: int
+
+
 class InstrumentIn(BaseModel):
     instrument_type: InstrumentType
     display_name: str
@@ -290,6 +304,14 @@ class TransactionPatch(DraftPatch):
 class BulkTransactionPatch(BaseModel):
     ids: list[UUID]
     changes: TransactionPatch
+
+
+class BulkDeleteIn(BaseModel):
+    ids: list[UUID] = Field(min_length=1, max_length=1000)
+
+
+class DeleteResult(BaseModel):
+    deleted: int
 
 
 class ProviderCategoryMappingIn(BaseModel):

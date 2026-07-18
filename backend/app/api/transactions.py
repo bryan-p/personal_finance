@@ -3,15 +3,15 @@ import io
 from datetime import date
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Response
-from sqlalchemy import or_, select
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import apply_changes, owned_or_404
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.models import Transaction, TransactionType
-from app.schemas import BulkTransactionPatch, TransactionPatch
+from app.models import ImportFile, RecurringSeries, RecurringStatus, Transaction, TransactionType
+from app.schemas import BulkDeleteIn, BulkTransactionPatch, DeleteResult, TransactionPatch
 
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
@@ -40,6 +40,37 @@ def transaction_query(user_id, start_date=None, end_date=None, account_id=None, 
 
 def as_dict(item):
     return {column.name: getattr(item, column.name) for column in item.__table__.columns}
+
+
+def delete_transactions(db: Session, rows: list[Transaction], user_id) -> int:
+    import_ids = {row.import_file_id for row in rows if row.import_file_id}
+    for row in rows:
+        db.delete(row)
+    db.flush()
+
+    for import_id in import_ids:
+        import_file = db.scalar(
+            select(ImportFile).where(
+                ImportFile.id == import_id,
+                ImportFile.user_id == user_id,
+            )
+        )
+        if import_file:
+            import_file.imported_row_count = db.scalar(
+                select(func.count()).select_from(Transaction).where(
+                    Transaction.user_id == user_id,
+                    Transaction.import_file_id == import_id,
+                )
+            ) or 0
+
+    db.execute(
+        delete(RecurringSeries).where(
+            RecurringSeries.user_id == user_id,
+            RecurringSeries.status == RecurringStatus.suggested,
+        )
+    )
+    db.commit()
+    return len(rows)
 
 
 @router.get("")
@@ -111,6 +142,24 @@ def export_transactions(
     )
 
 
+@router.post("/bulk-delete", response_model=DeleteResult)
+def bulk_delete(
+    payload: BulkDeleteIn,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    ids = set(payload.ids)
+    rows = db.scalars(
+        select(Transaction).where(
+            Transaction.user_id == user.id,
+            Transaction.id.in_(ids),
+        )
+    ).all()
+    if len(rows) != len(ids):
+        raise HTTPException(status_code=404, detail="One or more transactions were not found")
+    return {"deleted": delete_transactions(db, rows, user.id)}
+
+
 @router.get("/{transaction_id}")
 def get_transaction(transaction_id: UUID, db: Session = Depends(get_db), user=Depends(get_current_user)):
     return as_dict(owned_or_404(db, Transaction, transaction_id, user.id))
@@ -126,6 +175,16 @@ def update_transaction(transaction_id: UUID, payload: TransactionPatch, db: Sess
     return as_dict(item)
 
 
+@router.delete("/{transaction_id}", response_model=DeleteResult)
+def delete_transaction(
+    transaction_id: UUID,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    item = owned_or_404(db, Transaction, transaction_id, user.id)
+    return {"deleted": delete_transactions(db, [item], user.id)}
+
+
 @router.post("/bulk-update")
 def bulk_update(payload: BulkTransactionPatch, db: Session = Depends(get_db), user=Depends(get_current_user)):
     rows = db.scalars(select(Transaction).where(Transaction.user_id == user.id, Transaction.id.in_(payload.ids))).all()
@@ -133,4 +192,3 @@ def bulk_update(payload: BulkTransactionPatch, db: Session = Depends(get_db), us
         apply_changes(item, payload.changes)
     db.commit()
     return {"updated": len(rows)}
-

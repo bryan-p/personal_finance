@@ -19,7 +19,16 @@ from app.models import (
     ReviewStatus,
     Transaction,
 )
-from app.schemas import APIMessage, BulkDraftPatch, DraftPatch, MappingIn, MappingOut, MappingPatch
+from app.schemas import (
+    APIMessage,
+    BulkDeleteIn,
+    BulkDraftPatch,
+    DeleteResult,
+    DraftPatch,
+    MappingIn,
+    MappingOut,
+    MappingPatch,
+)
 from app.services.imports.normalization import normalize_import
 from app.services.imports.parsing import (
     detect_mapping,
@@ -222,6 +231,13 @@ def draft_dict(item: DraftTransaction):
     return {column.name: getattr(item, column.name) for column in item.__table__.columns if column.name != "raw_row_json"} | {"rule_applied": item.applied_rule_id is not None}
 
 
+def reviewable_import(db: Session, import_id: UUID, user_id) -> ImportFile:
+    item = owned_or_404(db, ImportFile, import_id, user_id)
+    if item.status != ImportStatus.review_pending:
+        raise HTTPException(status_code=409, detail="Import is not awaiting review")
+    return item
+
+
 @router.get("/imports/{import_id}/review")
 def review_import(
     import_id: UUID,
@@ -242,7 +258,7 @@ def review_import(
 
 @router.patch("/imports/{import_id}/draft-transactions/{draft_transaction_id}")
 def update_draft(import_id: UUID, draft_transaction_id: UUID, payload: DraftPatch, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    owned_or_404(db, ImportFile, import_id, user.id)
+    reviewable_import(db, import_id, user.id)
     item = owned_or_404(db, DraftTransaction, draft_transaction_id, user.id)
     if item.import_file_id != import_id:
         raise HTTPException(status_code=404, detail="Draft transaction not found in this import")
@@ -257,7 +273,7 @@ def update_draft(import_id: UUID, draft_transaction_id: UUID, payload: DraftPatc
 
 @router.post("/imports/{import_id}/bulk-update")
 def bulk_update_drafts(import_id: UUID, payload: BulkDraftPatch, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    owned_or_404(db, ImportFile, import_id, user.id)
+    reviewable_import(db, import_id, user.id)
     rows = db.scalars(
         select(DraftTransaction).where(
             DraftTransaction.user_id == user.id,
@@ -270,6 +286,49 @@ def bulk_update_drafts(import_id: UUID, payload: BulkDraftPatch, db: Session = D
         item.review_status = payload.changes.review_status or ReviewStatus.edited
     db.commit()
     return {"updated": len(rows)}
+
+
+@router.delete(
+    "/imports/{import_id}/draft-transactions/{draft_transaction_id}",
+    response_model=DeleteResult,
+)
+def delete_draft(
+    import_id: UUID,
+    draft_transaction_id: UUID,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    reviewable_import(db, import_id, user.id)
+    item = owned_or_404(db, DraftTransaction, draft_transaction_id, user.id)
+    if item.import_file_id != import_id:
+        raise HTTPException(status_code=404, detail="Draft transaction not found in this import")
+    db.delete(item)
+    db.commit()
+    return {"deleted": 1}
+
+
+@router.post("/imports/{import_id}/bulk-delete", response_model=DeleteResult)
+def bulk_delete_drafts(
+    import_id: UUID,
+    payload: BulkDeleteIn,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    reviewable_import(db, import_id, user.id)
+    ids = set(payload.ids)
+    rows = db.scalars(
+        select(DraftTransaction).where(
+            DraftTransaction.user_id == user.id,
+            DraftTransaction.import_file_id == import_id,
+            DraftTransaction.id.in_(ids),
+        )
+    ).all()
+    if len(rows) != len(ids):
+        raise HTTPException(status_code=404, detail="One or more draft transactions were not found")
+    for row in rows:
+        db.delete(row)
+    db.commit()
+    return {"deleted": len(rows)}
 
 
 @router.post("/imports/{import_id}/confirm")

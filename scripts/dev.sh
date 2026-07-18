@@ -22,7 +22,7 @@ for name in "${required[@]}"; do
 done
 
 if [[ ! -x .venv/bin/python ]]; then
-  echo "Missing Python environment. Run: python3 -m venv .venv && ./.venv/bin/pip install -r backend/requirements.txt" >&2
+  echo "Missing Python environment. Run: python3 -m venv .venv && ./.venv/bin/python -m pip install -r backend/requirements.txt" >&2
   exit 1
 fi
 if [[ ! -d frontend/node_modules ]]; then
@@ -48,7 +48,7 @@ reload_args=()
 if [[ "${BACKEND_RELOAD:-false}" == "true" ]]; then reload_args=(--reload); fi
 (
   cd backend
-  exec ../.venv/bin/uvicorn app.main:app --host "$BACKEND_HOST" --port "$BACKEND_PORT" "${reload_args[@]}"
+  exec ../.venv/bin/python -m uvicorn app.main:app --host "$BACKEND_HOST" --port "$BACKEND_PORT" "${reload_args[@]}"
 ) &
 BACKEND_PID=$!
 
@@ -56,4 +56,3 @@ npm --prefix frontend run dev -- --hostname "$FRONTEND_HOST" --port "$FRONTEND_P
 FRONTEND_PID=$!
 
 wait -n "$BACKEND_PID" "$FRONTEND_PID"
-

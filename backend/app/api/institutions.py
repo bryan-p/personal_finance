@@ -8,7 +8,7 @@ from app.api.deps import owned_or_404
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models import Institution
-from app.schemas import APIMessage, InstitutionIn, InstitutionOut, InstitutionPatch
+from app.schemas import InstitutionIn, InstitutionOut, InstitutionPatch
 from app.services.institutions import clean_institution_name, normalize_institution_name
 
 
@@ -79,11 +79,3 @@ def update_institution(
         setattr(item, name, value)
     db.commit()
     return item
-
-
-@router.delete("/{institution_id}", response_model=APIMessage)
-def disable_institution(institution_id: UUID, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    item = owned_or_404(db, Institution, institution_id, user.id)
-    item.is_active = False
-    db.commit()
-    return {"message": "Institution disabled"}

@@ -4,9 +4,9 @@ import { FormEvent, useEffect, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { Badge, EmptyState, PageHeader } from "@/components/Page";
 import { api } from "@/lib/api";
-import type { Account, Institution, Instrument } from "@/lib/types";
+import type { Account, AccountDeletionImpact, Institution, Instrument } from "@/lib/types";
 
-type Modal = "account" | "edit-account" | "instrument" | null;
+type Modal = "account" | "edit-account" | "instrument" | "delete-account" | null;
 
 export default function AccountsPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -16,6 +16,9 @@ export default function AccountsPage() {
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
   const [institutionId, setInstitutionId] = useState("");
   const [error, setError] = useState("");
+  const [deletionImpact, setDeletionImpact] = useState<AccountDeletionImpact | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [busy, setBusy] = useState(false);
 
   async function load() {
     const [accountRows, institutionRows] = await Promise.all([
@@ -97,9 +100,32 @@ export default function AccountsPage() {
     }
   }
 
-  async function disable(id: string) {
-    await api(`/accounts/${id}`, { method: "DELETE" });
-    await load();
+  async function openDeleteAccount(account: Account) {
+    setSelectedAccount(account);
+    setDeletionImpact(null);
+    setDeleteConfirmation("");
+    setError("");
+    setModal("delete-account");
+    try {
+      setDeletionImpact(await api<AccountDeletionImpact>(`/accounts/${account.id}/deletion-impact`));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not inspect account data");
+    }
+  }
+
+  async function deleteAccount() {
+    if (!selectedAccount || deleteConfirmation !== selectedAccount.name) return;
+    setBusy(true);
+    try {
+      await api<AccountDeletionImpact>(`/accounts/${selectedAccount.id}`, { method: "DELETE" });
+      setModal(null);
+      await load();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not delete account");
+      await load();
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function editInstrument(item: Instrument) {
@@ -162,14 +188,25 @@ export default function AccountsPage() {
         </div>)}
         <button className="button" onClick={() => { setSelectedAccount(item); setModal("instrument"); }}><Plus size={14}/>Add card/profile</button>
         <button className="button" onClick={() => openEditAccount(item)}>Edit account</button>
-        {item.is_active && <button className="button button-danger" onClick={() => disable(item.id)}>Disable account</button>}
+        <button className="button button-danger" onClick={() => openDeleteAccount(item)}>Delete account</button>
       </div>
     </div>)}</div>}
 
     {modal && <div className="modal-backdrop"><div className="modal">
-      <div className="modal-header"><h2>{modal === "instrument" ? "Add card or profile" : modal === "edit-account" ? "Edit financial account" : "Add financial account"}</h2><button className="icon-button" onClick={() => setModal(null)}><X/></button></div>
+      <div className="modal-header"><h2>{modal === "instrument" ? "Add card or profile" : modal === "edit-account" ? "Edit financial account" : modal === "delete-account" ? "Delete account" : "Add financial account"}</h2><button className="icon-button" onClick={() => setModal(null)}><X/></button></div>
       {error && <div className="notice notice-error">{error}</div>}
-      {modal !== "instrument" ? <form onSubmit={saveAccount}>
+      {modal === "delete-account" ? <div>
+        <div className="notice notice-warn">This permanently deletes the account and all of its financial data. The institution and its reusable import mappings will remain.</div>
+        {!deletionImpact ? <p className="muted">Calculating what will be deleted…</p> : <ul className="deletion-impact">
+          <li><strong>{deletionImpact.transaction_count}</strong> confirmed transactions</li>
+          <li><strong>{deletionImpact.draft_transaction_count}</strong> draft transactions</li>
+          <li><strong>{deletionImpact.instrument_count}</strong> cards or profiles</li>
+          <li><strong>{deletionImpact.import_count}</strong> import records</li>
+          <li><strong>{deletionImpact.upload_file_count}</strong> uploaded CSV files</li>
+        </ul>}
+        <div className="field"><label>Type <strong>{selectedAccount?.name}</strong> to confirm</label><input className="input" value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} autoFocus/></div>
+        <div className="form-actions"><button type="button" className="button" onClick={() => setModal(null)}>Cancel</button><button type="button" className="button button-danger" onClick={deleteAccount} disabled={busy || !deletionImpact || deleteConfirmation !== selectedAccount?.name}>{busy ? "Deleting…" : "Delete account permanently"}</button></div>
+      </div> : modal !== "instrument" ? <form onSubmit={saveAccount}>
         <div className="form-grid">
           <div className="field full"><label>Account name</label><input className="input" name="name" placeholder="Chase Sapphire Preferred" defaultValue={selectedAccount?.name || ""} required/></div>
           <div className="field full"><label>Financial institution</label><div className="institution-picker">
