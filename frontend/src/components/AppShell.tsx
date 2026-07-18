@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { BarChart3, CircleDollarSign, CreditCard, FolderTree, LogOut, RefreshCw, ScrollText, Upload, WalletCards } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 
 const links = [
   ["/dashboard", "Dashboard", BarChart3],
@@ -20,9 +20,36 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [name, setName] = useState("");
+  const [authState, setAuthState] = useState<"checking" | "authenticated" | "redirecting" | "error">("checking");
+  const [authError, setAuthError] = useState("");
   useEffect(() => {
-    api<{ display_name: string }>("/auth/me").then((user) => setName(user.display_name)).catch(() => router.replace("/login"));
+    let active = true;
+    api<{ display_name: string }>("/auth/me")
+      .then((user) => {
+        if (!active) return;
+        setName(user.display_name);
+        setAuthState("authenticated");
+      })
+      .catch((reason) => {
+        if (!active) return;
+        if (reason instanceof ApiError && reason.status === 401) {
+          setAuthState("redirecting");
+          router.replace("/login");
+          return;
+        }
+        setAuthError(reason instanceof Error ? reason.message : "Could not verify your session");
+        setAuthState("error");
+      });
+    return () => { active = false; };
   }, [router]);
+
+  if (authState === "checking" || authState === "redirecting") {
+    return <div className="auth-check" role="status">Checking your session…</div>;
+  }
+  if (authState === "error") {
+    return <div className="auth-check"><div className="notice notice-error">{authError}</div><button className="button" onClick={() => window.location.reload()}>Try again</button></div>;
+  }
+
   async function logout() {
     await api("/auth/logout", { method: "POST" });
     router.replace("/login");
@@ -36,4 +63,3 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <main className="main-content">{children}</main>
   </div>;
 }
-

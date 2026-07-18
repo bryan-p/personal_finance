@@ -1,4 +1,4 @@
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:9999";
+export const API_BASE = "/api";
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -32,4 +32,3 @@ export function shortDate(value: string | null | undefined) {
   if (!value) return "—";
   return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(new Date(value));
 }
-

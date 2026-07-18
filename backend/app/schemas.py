@@ -129,8 +129,9 @@ class InstrumentOut(InstrumentIn, ORMModel):
 
 MAPPING_FIELDS = [
     "date_column", "post_date_column", "description_column", "merchant_column", "amount_column",
-    "debit_column", "credit_column", "category_column", "transaction_id_column", "notes_column",
-    "card_number_column", "card_last_four_column", "cardholder_name_column", "account_suffix_column",
+    "debit_column", "credit_column", "category_column", "provider_type_column",
+    "transaction_id_column", "notes_column", "card_number_column", "card_last_four_column",
+    "cardholder_name_column", "account_suffix_column",
 ]
 
 
@@ -147,6 +148,7 @@ class MappingIn(BaseModel):
     debit_column: str | None = None
     credit_column: str | None = None
     category_column: str | None = None
+    provider_type_column: str | None = None
     transaction_id_column: str | None = None
     notes_column: str | None = None
     card_number_column: str | None = None
@@ -166,6 +168,9 @@ class MappingIn(BaseModel):
                 raise ValueError("Map at least one debit or credit column")
         elif not self.amount_column:
             raise ValueError("Map an amount column")
+        assigned_columns = [getattr(self, field) for field in MAPPING_FIELDS if getattr(self, field)]
+        if len(assigned_columns) != len(set(assigned_columns)):
+            raise ValueError("Each CSV column can only be mapped to one app field")
         return self
 
 
@@ -182,6 +187,7 @@ class MappingPatch(BaseModel):
     debit_column: str | None = None
     credit_column: str | None = None
     category_column: str | None = None
+    provider_type_column: str | None = None
     transaction_id_column: str | None = None
     notes_column: str | None = None
     card_number_column: str | None = None
@@ -316,12 +322,25 @@ class DeleteResult(BaseModel):
 
 class ProviderCategoryMappingIn(BaseModel):
     institution_id: UUID
-    source_category: str
+    source_category: str = Field(min_length=1, max_length=160)
     category_id: UUID
     subcategory_id: UUID | None = None
 
 
 class ProviderCategoryMappingOut(ProviderCategoryMappingIn, ORMModel):
+    id: UUID
+    institution: InstitutionOut
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProviderTransactionTypeMappingIn(BaseModel):
+    institution_id: UUID
+    source_transaction_type: str = Field(min_length=1, max_length=160)
+    transaction_type: TransactionType
+
+
+class ProviderTransactionTypeMappingOut(ProviderTransactionTypeMappingIn, ORMModel):
     id: UUID
     institution: InstitutionOut
     created_at: datetime

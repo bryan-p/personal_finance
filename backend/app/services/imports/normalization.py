@@ -16,6 +16,7 @@ from app.models import (
     ImportMapping,
     InstrumentType,
     ProviderCategoryMapping,
+    ProviderTransactionTypeMapping,
     Rule,
     Transaction,
     TransactionType,
@@ -28,6 +29,7 @@ from app.services.imports.parsing import (
     parse_date,
 )
 from app.services.rules import apply_first_matching_rule
+from app.services.transactions import excluded_for_type
 
 
 TRANSFER_WORDS = ("ach transfer", "transfer to", "transfer from", "zelle", "venmo", "paypal")
@@ -51,9 +53,9 @@ def normalized_amount(row: dict, mapping: ImportMapping) -> tuple[Decimal, Direc
 def detect_type(description: str, direction: Direction) -> tuple[TransactionType, bool]:
     text = description.lower()
     if any(term in text for term in PAYMENT_WORDS):
-        return TransactionType.credit_card_payment, True
+        return TransactionType.credit_card_payment, excluded_for_type(TransactionType.credit_card_payment)
     if any(term in text for term in TRANSFER_WORDS):
-        return TransactionType.transfer, True
+        return TransactionType.transfer, excluded_for_type(TransactionType.transfer)
     return (TransactionType.income, False) if direction == Direction.inflow else (TransactionType.expense, False)
 
 
@@ -115,14 +117,25 @@ def normalize_import(db: Session, import_file: ImportFile, mapping: ImportMappin
         _, rows = parse_csv(source.read())
     db.query(DraftTransaction).filter(DraftTransaction.import_file_id == import_file.id).delete()
     rules = db.scalars(
-        select(Rule).where(Rule.user_id == import_file.user_id, Rule.is_active.is_(True)).order_by(Rule.priority)
+        select(Rule)
+        .where(Rule.user_id == import_file.user_id, Rule.is_active.is_(True))
+        .order_by(Rule.priority, Rule.created_at)
     ).all()
     category_mappings = {
-        item.source_category.lower(): item
+        item.source_category.strip().casefold(): item
         for item in db.scalars(
             select(ProviderCategoryMapping).where(
                 ProviderCategoryMapping.user_id == import_file.user_id,
                 ProviderCategoryMapping.institution_id == mapping.institution_id,
+            )
+        ).all()
+    }
+    type_mappings = {
+        item.source_transaction_type.strip().casefold(): item
+        for item in db.scalars(
+            select(ProviderTransactionTypeMapping).where(
+                ProviderTransactionTypeMapping.user_id == import_file.user_id,
+                ProviderTransactionTypeMapping.institution_id == mapping.institution_id,
             )
         ).all()
     }
@@ -153,8 +166,19 @@ def normalize_import(db: Session, import_file: ImportFile, mapping: ImportMappin
         duplicates += int(duplicate)
         seen.add(dedupe)
         transaction_type, excluded = detect_type(description, direction)
-        source_category = row.get(mapping.category_column) if mapping.category_column else None
-        provider_mapping = category_mappings.get((source_category or "").lower())
+        source_category = (row.get(mapping.category_column) or None) if mapping.category_column else None
+        source_transaction_type = (
+            (row.get(mapping.provider_type_column) or None)
+            if mapping.provider_type_column
+            else None
+        )
+        provider_mapping = category_mappings.get((source_category or "").strip().casefold())
+        provider_type_mapping = type_mappings.get(
+            (source_transaction_type or "").strip().casefold()
+        )
+        if provider_type_mapping:
+            transaction_type = provider_type_mapping.transaction_type
+            excluded = excluded_for_type(transaction_type)
         draft = DraftTransaction(
             user_id=import_file.user_id,
             import_file_id=import_file.id,
@@ -173,6 +197,7 @@ def normalize_import(db: Session, import_file: ImportFile, mapping: ImportMappin
             category_id=provider_mapping.category_id if provider_mapping else None,
             subcategory_id=provider_mapping.subcategory_id if provider_mapping else None,
             source_category=source_category,
+            source_transaction_type=source_transaction_type,
             source_card_identifier=source_identifier,
             card_last_four=last_four,
             cardholder_name=row.get(mapping.cardholder_name_column) if mapping.cardholder_name_column else None,
@@ -184,7 +209,13 @@ def normalize_import(db: Session, import_file: ImportFile, mapping: ImportMappin
             provider_transaction_id=provider_id,
             notes=row.get(mapping.notes_column) if mapping.notes_column else None,
         )
-        apply_first_matching_rule(draft, rules, db)
+        applied_rule = apply_first_matching_rule(draft, rules, db)
+        if (
+            applied_rule
+            and applied_rule.transaction_type is not None
+            and applied_rule.is_excluded_from_spending is None
+        ):
+            draft.is_excluded_from_spending = excluded_for_type(draft.transaction_type)
         if draft.transaction_type == TransactionType.expense and not draft.is_excluded_from_spending:
             draft.recurring_candidate = recurring_candidate_for(
                 draft.description_clean, draft.merchant_name, draft.amount, transaction_history

@@ -17,3 +17,5 @@ frontend/out/
 frontend/*.tsbuildinfo
 .DS_Store
 .deploy/
+*.png
+*.csv

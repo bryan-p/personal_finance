@@ -97,6 +97,7 @@ class MatchField(str, enum.Enum):
     account = "account"
     account_instrument = "account_instrument"
     source_category = "source_category"
+    source_transaction_type = "source_transaction_type"
     amount = "amount"
     direction = "direction"
     cardholder_name = "cardholder_name"
@@ -224,6 +225,7 @@ class ImportMapping(Base, IdMixin, TimestampMixin):
     debit_column: Mapped[str | None] = mapped_column(String(255))
     credit_column: Mapped[str | None] = mapped_column(String(255))
     category_column: Mapped[str | None] = mapped_column(String(255))
+    provider_type_column: Mapped[str | None] = mapped_column(String(255))
     transaction_id_column: Mapped[str | None] = mapped_column(String(255))
     notes_column: Mapped[str | None] = mapped_column(String(255))
     card_number_column: Mapped[str | None] = mapped_column(String(255))
@@ -269,6 +271,22 @@ class ProviderCategoryMapping(Base, IdMixin, TimestampMixin):
     institution = relationship("Institution", lazy="joined")
 
 
+class ProviderTransactionTypeMapping(Base, IdMixin, TimestampMixin):
+    __tablename__ = "provider_transaction_type_mappings"
+    __table_args__ = (
+        UniqueConstraint("user_id", "institution_id", "source_transaction_type"),
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    institution_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("institutions.id"), index=True
+    )
+    source_transaction_type: Mapped[str] = mapped_column(String(160))
+    transaction_type: Mapped[TransactionType] = mapped_column(enum_type(TransactionType))
+    institution = relationship("Institution", lazy="joined")
+
+
 class Rule(Base, IdMixin, TimestampMixin):
     __tablename__ = "rules"
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
@@ -302,6 +320,7 @@ class TransactionColumns:
     category_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("categories.id"), index=True)
     subcategory_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("subcategories.id"), index=True)
     source_category: Mapped[str | None] = mapped_column(String(160))
+    source_transaction_type: Mapped[str | None] = mapped_column(String(160))
     source_card_identifier: Mapped[str | None] = mapped_column(String(64))
     card_last_four: Mapped[str | None] = mapped_column(String(4))
     cardholder_name: Mapped[str | None] = mapped_column(String(160))

@@ -16,9 +16,10 @@ HEADER_ALIASES = {
     "amount_column": ["amount", "transaction amount"],
     "debit_column": ["debit", "withdrawal", "charge"],
     "credit_column": ["credit", "deposit", "payment"],
-    "category_column": ["category", "type"],
+    "category_column": ["category", "classification"],
+    "provider_type_column": ["type", "transaction type", "activity type"],
     "transaction_id_column": ["transaction id", "reference number", "reference", "id"],
-    "notes_column": ["notes", "note"],
+    "notes_column": ["notes", "note", "memo"],
     "card_number_column": ["card number", "account number"],
     "card_last_four_column": ["card last four", "last 4", "last four"],
     "cardholder_name_column": ["cardholder", "authorized user", "employee name"],
@@ -57,9 +58,20 @@ def parse_csv(content: bytes) -> tuple[list[str], list[dict[str, str]]]:
     return headers, rows
 
 
+def normalize_header_name(header: str) -> str:
+    return re.sub(r"\s+", " ", header.strip().casefold())
+
+
 def header_signature(headers: list[str]) -> str:
-    normalized = "|".join(sorted(re.sub(r"\s+", " ", header.strip().lower()) for header in headers))
+    normalized = "|".join(sorted(normalize_header_name(header) for header in headers))
     return hashlib.sha256(normalized.encode()).hexdigest()
+
+
+def resolve_header_name(saved_header: str | None, headers: list[str]) -> str | None:
+    if not saved_header:
+        return None
+    normalized_headers = {normalize_header_name(header): header for header in headers}
+    return normalized_headers.get(normalize_header_name(saved_header))
 
 
 def file_hash(content: bytes) -> str:
@@ -68,27 +80,42 @@ def file_hash(content: bytes) -> str:
 
 def _score_header(header: str, aliases: list[str]) -> float:
     normalized = re.sub(r"[_-]+", " ", header.strip().lower())
-    if normalized in aliases:
-        return 1.0
-    if any(alias in normalized or normalized in alias for alias in aliases):
-        return 0.75
+    for index, alias in enumerate(aliases):
+        preference = min(index, 5) * 0.015
+        if normalized == alias:
+            return 1.0 - preference
+        if alias in normalized or normalized in alias:
+            return 0.75 - preference
     return 0.0
 
 
 def detect_mapping(headers: list[str], sample_rows: list[dict]) -> dict:
     detected: dict[str, str | float] = {}
     confidence: dict[str, float] = {}
-    for field, aliases in HEADER_ALIASES.items():
-        matches = sorted(((_score_header(h, aliases), h) for h in headers), reverse=True)
-        if matches and matches[0][0] > 0:
-            detected[field] = matches[0][1]
-            confidence[field] = matches[0][0]
+    candidates = []
+    for field_index, (field, aliases) in enumerate(HEADER_ALIASES.items()):
+        for header_index, header in enumerate(headers):
+            score = _score_header(header, aliases)
+            if score > 0:
+                candidates.append((-score, field_index, header_index, field, header))
+    assigned_fields: set[str] = set()
+    assigned_headers: set[str] = set()
+    for negative_score, _, _, field, header in sorted(candidates):
+        if field in assigned_fields or header in assigned_headers:
+            continue
+        detected[field] = header
+        confidence[field] = round(-negative_score, 3)
+        assigned_fields.add(field)
+        assigned_headers.add(header)
     if "amount_column" not in detected and not ({"debit_column", "credit_column"} <= detected.keys()):
         for header in headers:
+            if header in assigned_headers:
+                continue
             values = [row.get(header, "") for row in sample_rows[:10]]
             if values and sum(can_parse_amount(v) for v in values) / len(values) >= 0.8:
                 detected["amount_column"] = header
                 confidence["amount_column"] = 0.45
+                assigned_headers.add(header)
                 break
     detected["amount_behavior"] = (
         "debit_credit_columns"
@@ -146,4 +173,3 @@ def normalize_card_identifier(value: str | None) -> tuple[str | None, str | None
 
 def clean_description(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
-

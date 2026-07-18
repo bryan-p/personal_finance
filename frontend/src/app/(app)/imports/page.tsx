@@ -11,8 +11,8 @@ interface SavedMapping { id:string; mapping_name:string; institution_id:string; 
 
 export default function ImportsPage() {
   const router=useRouter(); const [accounts,setAccounts]=useState<Account[]>([]); const [imports,setImports]=useState<ImportRecord[]>([]); const [mappings,setMappings]=useState<SavedMapping[]>([]); const [error,setError]=useState(""); const [busy,setBusy]=useState(false);
-  async function load(){const [a,i,m]=await Promise.all([api<Account[]>("/accounts"),api<ImportRecord[]>("/imports"),api<SavedMapping[]>("/mappings")]);setAccounts(a.filter(x=>x.is_active));setImports(i);setMappings(m)}
-  useEffect(()=>{load();},[]);
+  async function load(){try{const [a,i,m]=await Promise.all([api<Account[]>("/accounts"),api<ImportRecord[]>("/imports"),api<SavedMapping[]>("/mappings")]);setAccounts(a.filter(x=>x.is_active));setImports(i);setMappings(m)}catch(e){setError(e instanceof Error?e.message:"Could not load imports")}}
+  useEffect(()=>{void load();},[]);
   async function upload(event:FormEvent<HTMLFormElement>){event.preventDefault();setBusy(true);setError("");const form=new FormData(event.currentTarget);try{const result=await api<ImportRecord>("/imports/upload",{method:"POST",body:form});router.push(`/imports/${result.id}/mapping`);}catch(e){setError(e instanceof Error?e.message:"Upload failed");setBusy(false)}}
   function destination(item:ImportRecord){return item.status==="review_pending"?`/imports/${item.id}/review`:`/imports/${item.id}/mapping`;}
   async function deleteImport(item:ImportRecord){if(!window.confirm(`Permanently delete import “${item.original_filename}” and its stored CSV?`))return;setError("");try{await api(`/imports/${item.id}`,{method:"DELETE"});await load()}catch(e){setError(e instanceof Error?e.message:"Could not delete import")}}

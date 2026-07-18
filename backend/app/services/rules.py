@@ -10,6 +10,8 @@ def rule_matches(transaction, rule, db=None) -> bool:
         actual = transaction.merchant_name
     elif field == "source_category":
         actual = transaction.source_category
+    elif field == "source_transaction_type":
+        actual = transaction.source_transaction_type
     elif field == "amount":
         actual = transaction.amount
     elif field == "direction":
@@ -55,10 +57,14 @@ def apply_first_matching_rule(transaction, rules, db=None):
     for rule in rules:
         if not rule_matches(transaction, rule, db):
             continue
-        for field in ("category_id", "subcategory_id", "transaction_type"):
-            value = getattr(rule, field)
-            if value is not None:
-                setattr(transaction, field, value)
+        if rule.category_id is not None:
+            if rule.category_id != transaction.category_id and rule.subcategory_id is None:
+                transaction.subcategory_id = None
+            transaction.category_id = rule.category_id
+        if rule.subcategory_id is not None:
+            transaction.subcategory_id = rule.subcategory_id
+        if rule.transaction_type is not None:
+            transaction.transaction_type = rule.transaction_type
         if rule.is_excluded_from_spending is not None:
             transaction.is_excluded_from_spending = rule.is_excluded_from_spending
         if rule.mark_as_recurring is not None:
@@ -70,4 +76,3 @@ def apply_first_matching_rule(transaction, rules, db=None):
         transaction.applied_rule_id = rule.id
         return rule
     return None
-

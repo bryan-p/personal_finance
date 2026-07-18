@@ -12,6 +12,7 @@ from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models import ImportFile, RecurringSeries, RecurringStatus, Transaction, TransactionType
 from app.schemas import BulkDeleteIn, BulkTransactionPatch, DeleteResult, TransactionPatch
+from app.services.transactions import sync_type_exclusion
 
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
@@ -111,7 +112,8 @@ def export_transactions(
     fields = [
         "transaction_date", "posted_date", "description", "merchant", "amount", "direction",
         "transaction_type", "account_id", "account_instrument_id", "category_id", "subcategory_id",
-        "source_category", "card_last_four", "cardholder_name", "excluded_from_spending", "is_recurring", "notes",
+        "source_category", "source_transaction_type", "card_last_four", "cardholder_name",
+        "excluded_from_spending", "is_recurring", "notes",
     ]
     writer = csv.DictWriter(output, fieldnames=fields)
     writer.writeheader()
@@ -129,6 +131,7 @@ def export_transactions(
             "category_id": item.category_id or "",
             "subcategory_id": item.subcategory_id or "",
             "source_category": item.source_category or "",
+            "source_transaction_type": item.source_transaction_type or "",
             "card_last_four": item.card_last_four or "",
             "cardholder_name": item.cardholder_name or "",
             "excluded_from_spending": item.is_excluded_from_spending,
@@ -169,8 +172,7 @@ def get_transaction(transaction_id: UUID, db: Session = Depends(get_db), user=De
 def update_transaction(transaction_id: UUID, payload: TransactionPatch, db: Session = Depends(get_db), user=Depends(get_current_user)):
     item = owned_or_404(db, Transaction, transaction_id, user.id)
     apply_changes(item, payload)
-    if item.transaction_type.value in ("transfer", "credit_card_payment", "adjustment"):
-        item.is_excluded_from_spending = True
+    sync_type_exclusion(item, payload.model_fields_set)
     db.commit()
     return as_dict(item)
 
@@ -190,5 +192,6 @@ def bulk_update(payload: BulkTransactionPatch, db: Session = Depends(get_db), us
     rows = db.scalars(select(Transaction).where(Transaction.user_id == user.id, Transaction.id.in_(payload.ids))).all()
     for item in rows:
         apply_changes(item, payload.changes)
+        sync_type_exclusion(item, payload.changes.model_fields_set)
     db.commit()
     return {"updated": len(rows)}

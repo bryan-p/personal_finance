@@ -10,6 +10,7 @@ from app.services.imports.parsing import (
     parse_amount,
     parse_csv,
     parse_date,
+    resolve_header_name,
 )
 
 
@@ -26,6 +27,40 @@ def test_known_provider_detection():
     assert confidence == 1
 
 
+def test_chase_mapping_keeps_category_and_provider_type_separate():
+    headers = [
+        "Transaction Date",
+        "Post Date",
+        "Description",
+        "Category",
+        "Type",
+        "Amount",
+        "Memo",
+    ]
+    rows = [{
+        "Transaction Date": "02/25/2026",
+        "Post Date": "02/26/2026",
+        "Description": "sandals r us",
+        "Category": "Shopping",
+        "Type": "Sale",
+        "Amount": "-16.99",
+        "Memo": "",
+    }]
+
+    mapping = detect_mapping(headers, rows)
+
+    assert mapping["description_column"] == "Description"
+    assert mapping["category_column"] == "Category"
+    assert mapping["provider_type_column"] == "Type"
+    assert mapping["notes_column"] == "Memo"
+    assigned = [
+        value
+        for key, value in mapping.items()
+        if key.endswith("_column")
+    ]
+    assert len(assigned) == len(set(assigned))
+
+
 def test_unknown_provider_gets_generic_mapping():
     headers = ["Activity day", "Memo text", "Value USD"]
     rows = [{"Activity day": "2026-07-01", "Memo text": "Lunch", "Value USD": "12.50"}]
@@ -37,6 +72,7 @@ def test_unknown_provider_gets_generic_mapping():
 
 def test_header_signature_ignores_order_and_case():
     assert header_signature(["Date", "Amount"]) == header_signature([" amount ", "DATE"])
+    assert resolve_header_name("Transaction Date", ["transaction date", "Amount"]) == "transaction date"
 
 
 @pytest.mark.parametrize(
@@ -50,4 +86,3 @@ def test_amount_parsing(raw, expected):
 def test_date_and_safe_card_identifier_normalization():
     assert parse_date("07/04/2026").isoformat() == "2026-07-04"
     assert normalize_card_identifier("4111-1111-1111-9876") == ("xxxx9876", "9876")
-

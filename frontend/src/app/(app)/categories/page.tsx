@@ -1,20 +1,203 @@
 "use client";
+
 import { FormEvent, useEffect, useState } from "react";
-import { Plus, X } from "lucide-react";
+import { Plus, Trash2, X } from "lucide-react";
 import { Badge, PageHeader } from "@/components/Page";
 import { api } from "@/lib/api";
 import type { Category, Institution } from "@/lib/types";
 
-interface ProviderMap { id:string; institution_id:string; institution:Institution; source_category:string; category_id:string; subcategory_id?:string; }
+interface ProviderCategoryMap {
+  id: string;
+  institution_id: string;
+  institution: Institution;
+  source_category: string;
+  category_id: string;
+  subcategory_id?: string;
+}
 
-export default function CategoriesPage(){
- const [categories,setCategories]=useState<Category[]>([]);const [institutions,setInstitutions]=useState<Institution[]>([]);const [mappings,setMappings]=useState<ProviderMap[]>([]);const [modal,setModal]=useState<"category"|"subcategory"|"provider mapping"|null>(null);const [parent,setParent]=useState("");const [error,setError]=useState("");
- async function load(){const [c,i,m]=await Promise.all([api<Category[]>("/categories"),api<Institution[]>("/institutions"),api<ProviderMap[]>("/provider-category-mappings")]);setCategories(c);setInstitutions(i);setMappings(m)}useEffect(()=>{load()},[]);
- async function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);try{if(modal==="category")await api("/categories",{method:"POST",body:JSON.stringify({name:f.get("name"),description:f.get("description")||null})});else if(modal==="subcategory")await api("/subcategories",{method:"POST",body:JSON.stringify({category_id:parent,name:f.get("name"),description:f.get("description")||null})});else await api("/provider-category-mappings",{method:"POST",body:JSON.stringify({institution_id:f.get("institution_id"),source_category:f.get("source"),category_id:f.get("category"),subcategory_id:f.get("subcategory")||null})});setModal(null);await load()}catch(err){setError(err instanceof Error?err.message:"Could not save")}}
- async function disable(category:Category){await api(`/categories/${category.id}`,{method:"DELETE"});await load()}
- return <><PageHeader eyebrow="Taxonomy" title="Categories" description="Your categories are the source of truth; provider labels are preserved separately." actions={<button className="button button-primary" onClick={()=>setModal("category")}><Plus size={16}/>New category</button>}/>
- <div className="grid grid-3">{categories.map(c=><div className="card account-card" key={c.id}><div className="account-head"><div><h3>{c.name}</h3><span className="account-meta">{c.subcategories.length} subcategories</span></div><Badge tone={c.is_active?"good":"neutral"}>{c.is_system?"starter":"custom"}</Badge></div><div className="instrument-list">{c.subcategories.map(s=><div className="instrument-row" key={s.id}>{s.name}{!s.is_active&&<Badge>disabled</Badge>}</div>)}<button className="button" onClick={()=>{setParent(c.id);setModal("subcategory")}}><Plus size={14}/>Add subcategory</button>{c.is_active&&<button className="button button-danger" onClick={()=>disable(c)}>Disable category</button>}</div></div>)}</div>
- <div className="section-title"><div><h2>Institution category mappings</h2><p>Translate institution-provided labels into your own taxonomy after explicit rules run</p></div><button className="button" onClick={()=>setModal("provider mapping")}><Plus size={14}/>Add mapping</button></div><div className="card table-card"><div className="table-scroll"><table className="data-table"><thead><tr><th>Institution</th><th>Source category</th><th>App category</th><th>Subcategory</th></tr></thead><tbody>{mappings.length?mappings.map(m=>{const category=categories.find(c=>c.id===m.category_id);return <tr key={m.id}><td>{m.institution.display_name}</td><td><Badge tone="accent">{m.source_category}</Badge></td><td>{category?.name||"—"}</td><td>{category?.subcategories.find(s=>s.id===m.subcategory_id)?.name||"—"}</td></tr>}):<tr><td colSpan={4} className="muted">No institution mappings yet.</td></tr>}</tbody></table></div></div>
- {modal&&<div className="modal-backdrop"><div className="modal"><div className="modal-header"><h2>Add {modal}</h2><button className="icon-button" onClick={()=>setModal(null)}><X/></button></div>{error&&<div className="notice notice-error">{error}</div>}<form onSubmit={submit}>{modal==="provider mapping"?<div className="form-grid"><div className="field"><label>Financial institution</label><select className="select" name="institution_id" required><option value="">Choose institution</option>{institutions.filter(i=>i.is_active).map(i=><option key={i.id} value={i.id}>{i.display_name}</option>)}</select></div><div className="field"><label>Institution category</label><input className="input" name="source" required placeholder="Food & drink"/></div><div className="field"><label>App category</label><select className="select" name="category" value={parent} onChange={e=>setParent(e.target.value)} required><option value="">Choose category</option>{categories.filter(c=>c.is_active).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div><div className="field"><label>App subcategory</label><select className="select" name="subcategory"><option value="">No subcategory</option>{categories.find(c=>c.id===parent)?.subcategories.filter(s=>s.is_active).map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></div></div>:<><div className="field"><label>Name</label><input className="input" name="name" required/></div><div className="field" style={{marginTop:14}}><label>Description</label><textarea className="textarea" name="description"/></div></>}<div className="form-actions"><button type="button" className="button" onClick={()=>setModal(null)}>Cancel</button><button className="button button-primary">Save</button></div></form></div></div>}
- </>;
+interface ProviderTypeMap {
+  id: string;
+  institution_id: string;
+  institution: Institution;
+  source_transaction_type: string;
+  transaction_type: string;
+}
+
+type Modal = "category" | "subcategory" | "provider category" | "provider type" | null;
+
+const transactionTypes = [
+  "expense", "income", "transfer", "credit_card_payment", "refund", "fee", "adjustment", "other",
+];
+
+export default function CategoriesPage() {
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [institutions, setInstitutions] = useState<Institution[]>([]);
+  const [categoryMappings, setCategoryMappings] = useState<ProviderCategoryMap[]>([]);
+  const [typeMappings, setTypeMappings] = useState<ProviderTypeMap[]>([]);
+  const [modal, setModal] = useState<Modal>(null);
+  const [parent, setParent] = useState("");
+  const [error, setError] = useState("");
+
+  async function load() {
+    const [categoryRows, institutionRows, categoryMapRows, typeMapRows] = await Promise.all([
+      api<Category[]>("/categories"),
+      api<Institution[]>("/institutions"),
+      api<ProviderCategoryMap[]>("/provider-category-mappings"),
+      api<ProviderTypeMap[]>("/provider-transaction-type-mappings"),
+    ]);
+    setCategories(categoryRows);
+    setInstitutions(institutionRows);
+    setCategoryMappings(categoryMapRows);
+    setTypeMappings(typeMapRows);
+  }
+
+  useEffect(() => { load().catch((reason) => setError(reason.message)); }, []);
+
+  function openModal(next: Exclude<Modal, null>, categoryId = "") {
+    setError("");
+    setParent(categoryId);
+    setModal(next);
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    try {
+      if (modal === "category") {
+        await api("/categories", {
+          method: "POST",
+          body: JSON.stringify({ name: form.get("name"), description: form.get("description") || null }),
+        });
+      } else if (modal === "subcategory") {
+        await api("/subcategories", {
+          method: "POST",
+          body: JSON.stringify({ category_id: parent, name: form.get("name"), description: form.get("description") || null }),
+        });
+      } else if (modal === "provider category") {
+        await api("/provider-category-mappings", {
+          method: "POST",
+          body: JSON.stringify({
+            institution_id: form.get("institution_id"),
+            source_category: form.get("source"),
+            category_id: form.get("category"),
+            subcategory_id: form.get("subcategory") || null,
+          }),
+        });
+      } else if (modal === "provider type") {
+        await api("/provider-transaction-type-mappings", {
+          method: "POST",
+          body: JSON.stringify({
+            institution_id: form.get("institution_id"),
+            source_transaction_type: form.get("source"),
+            transaction_type: form.get("transaction_type"),
+          }),
+        });
+      }
+      setModal(null);
+      await load();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not save");
+    }
+  }
+
+  async function disable(category: Category) {
+    await api(`/categories/${category.id}`, { method: "DELETE" });
+    await load();
+  }
+
+  async function deleteMapping(kind: "category" | "type", id: string) {
+    const path = kind === "category"
+      ? `/provider-category-mappings/${id}`
+      : `/provider-transaction-type-mappings/${id}`;
+    try {
+      await api(path, { method: "DELETE" });
+      await load();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not delete mapping");
+    }
+  }
+
+  return <>
+    <PageHeader
+      eyebrow="Taxonomy"
+      title="Categories"
+      description="Your categories are the source of truth; provider category and type labels are preserved separately."
+      actions={<button className="button button-primary" onClick={() => openModal("category")}><Plus size={16}/>New category</button>}
+    />
+    {error && <div className="notice notice-error">{error}</div>}
+
+    <div className="grid grid-3">{categories.map((category) => <div className="card account-card" key={category.id}>
+      <div className="account-head"><div><h3>{category.name}</h3><span className="account-meta">{category.subcategories.length} subcategories</span></div><Badge tone={category.is_active ? "good" : "neutral"}>{category.is_system ? "starter" : "custom"}</Badge></div>
+      <div className="instrument-list">
+        {category.subcategories.map((subcategory) => <div className="instrument-row" key={subcategory.id}>{subcategory.name}{!subcategory.is_active && <Badge>disabled</Badge>}</div>)}
+        <button className="button" onClick={() => openModal("subcategory", category.id)}><Plus size={14}/>Add subcategory</button>
+        {category.is_active && <button className="button button-danger" onClick={() => disable(category)}>Disable category</button>}
+      </div>
+    </div>)}</div>
+
+    <div className="section-title"><div>
+      <h2>Institution category mappings</h2>
+      <p>Translate source category labels into your taxonomy before explicit rules override them.</p>
+    </div><button className="button" onClick={() => openModal("provider category")}><Plus size={14}/>Add mapping</button></div>
+    <div className="card table-card"><div className="table-scroll"><table className="data-table">
+      <thead><tr><th>Institution</th><th>Source category</th><th>App category</th><th>Subcategory</th><th/></tr></thead>
+      <tbody>{categoryMappings.length ? categoryMappings.map((mapping) => {
+        const category = categories.find((candidate) => candidate.id === mapping.category_id);
+        return <tr key={mapping.id}>
+          <td>{mapping.institution.display_name}</td><td><Badge tone="accent">{mapping.source_category}</Badge></td>
+          <td>{category?.name || "—"}</td><td>{category?.subcategories.find((subcategory) => subcategory.id === mapping.subcategory_id)?.name || "—"}</td>
+          <td><button className="icon-button danger" onClick={() => deleteMapping("category", mapping.id)} aria-label={`Delete ${mapping.source_category} mapping`}><Trash2 size={15}/></button></td>
+        </tr>;
+      }) : <tr><td colSpan={5} className="muted">No institution category mappings yet.</td></tr>}</tbody>
+    </table></div></div>
+
+    <div className="section-title"><div>
+      <h2>Provider transaction type mappings</h2>
+      <p>Translate values such as Sale, Payment, or Return into Ledgerly transaction types before rules run.</p>
+    </div><button className="button" onClick={() => openModal("provider type")}><Plus size={14}/>Add mapping</button></div>
+    <div className="card table-card"><div className="table-scroll"><table className="data-table">
+      <thead><tr><th>Institution</th><th>Provider type</th><th>Ledgerly type</th><th>Spending treatment</th><th/></tr></thead>
+      <tbody>{typeMappings.length ? typeMappings.map((mapping) => <tr key={mapping.id}>
+        <td>{mapping.institution.display_name}</td><td><Badge tone="accent">{mapping.source_transaction_type}</Badge></td>
+        <td>{mapping.transaction_type.replaceAll("_", " ")}</td>
+        <td>{["transfer", "credit_card_payment", "adjustment"].includes(mapping.transaction_type) ? "Excluded" : "Not auto-excluded"}</td>
+        <td><button className="icon-button danger" onClick={() => deleteMapping("type", mapping.id)} aria-label={`Delete ${mapping.source_transaction_type} mapping`}><Trash2 size={15}/></button></td>
+      </tr>) : <tr><td colSpan={5} className="muted">No provider transaction type mappings yet.</td></tr>}</tbody>
+    </table></div></div>
+
+    {modal && <div className="modal-backdrop"><div className="modal">
+      <div className="modal-header"><h2>Add {modal}</h2><button className="icon-button" onClick={() => setModal(null)}><X/></button></div>
+      {error && <div className="notice notice-error">{error}</div>}
+      <form onSubmit={submit}>
+        {modal === "provider category" && <div className="form-grid">
+          <InstitutionField institutions={institutions}/>
+          <div className="field"><label>Institution category</label><input className="input" name="source" required placeholder="Shopping"/></div>
+          <div className="field"><label>App category</label><select className="select" name="category" value={parent} onChange={(event) => setParent(event.target.value)} required>
+            <option value="">Choose category</option>{categories.filter((category) => category.is_active).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+          </select></div>
+          <div className="field"><label>App subcategory</label><select className="select" name="subcategory">
+            <option value="">No subcategory</option>{categories.find((category) => category.id === parent)?.subcategories.filter((subcategory) => subcategory.is_active).map((subcategory) => <option key={subcategory.id} value={subcategory.id}>{subcategory.name}</option>)}
+          </select></div>
+        </div>}
+        {modal === "provider type" && <div className="form-grid">
+          <InstitutionField institutions={institutions}/>
+          <div className="field"><label>Provider transaction type</label><input className="input" name="source" required placeholder="Sale"/></div>
+          <div className="field"><label>Ledgerly transaction type</label><select className="select" name="transaction_type" required>
+            {transactionTypes.map((type) => <option key={type} value={type}>{type.replaceAll("_", " ")}</option>)}
+          </select></div>
+        </div>}
+        {(modal === "category" || modal === "subcategory") && <>
+          <div className="field"><label>Name</label><input className="input" name="name" required/></div>
+          <div className="field" style={{ marginTop: 14 }}><label>Description</label><textarea className="textarea" name="description"/></div>
+        </>}
+        <div className="form-actions"><button type="button" className="button" onClick={() => setModal(null)}>Cancel</button><button className="button button-primary">Save</button></div>
+      </form>
+    </div></div>}
+  </>;
+}
+
+function InstitutionField({ institutions }: { institutions: Institution[] }) {
+  return <div className="field"><label>Financial institution</label><select className="select" name="institution_id" required>
+    <option value="">Choose institution</option>{institutions.filter((institution) => institution.is_active).map((institution) => <option key={institution.id} value={institution.id}>{institution.display_name}</option>)}
+  </select></div>;
 }

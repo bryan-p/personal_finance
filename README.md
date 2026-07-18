@@ -9,7 +9,7 @@ The MVP includes:
 
 - Email/password registration, cookie sessions, and per-user data isolation.
 - Canonical financial institutions plus parent accounts and optional cards, authorized users, and profiles.
-- Starter categories/subcategories, custom categories, institution category mappings, and rules.
+- Starter categories/subcategories, custom categories, institution category/type mappings, and rules.
 - Resumable imports with file hashes, header/provider detection, reusable mappings, draft rows,
   safe card attribution, duplicate flags, inline review, confirmation, cancellation, and cleanup of
   failed or cancelled imports and their stored CSV files.
@@ -43,7 +43,6 @@ Keep the expected service values unless the ports are already in use:
 ```env
 FRONTEND_HOST=localhost
 FRONTEND_PORT=5000
-NEXT_PUBLIC_API_BASE_URL=http://localhost:9999
 BACKEND_HOST=localhost
 BACKEND_PORT=9999
 DATABASE_NAME=personal_finance_sol
@@ -261,16 +260,18 @@ Explicit `--frontend-origin` and `--api-url` values take precedence over generat
 3. Ledgerly parses the header/sample rows, checks the file hash, looks for a saved header signature,
    and otherwise proposes a generic mapping.
 4. Select the institution—or add it if it is not listed—then confirm the account type, amount
-   convention, required columns, and optional category/ID/card/profile columns.
+   convention, and how each CSV column should be imported or ignored. Provider category and
+   transaction-type columns are preserved separately.
 5. Save the mapping. Its normalized header signature is reused for future files with the same
    format; saved mappings can be renamed or deleted from **Import CSV**.
 6. Review every draft row, including rule-applied values, duplicates, exclusions, and card/profile
    assignments. Draft rows can be deleted individually or in bulk before confirming the import.
 
 Generic mappings handle signed amounts, charge-positive/negative conventions, separate debit and
-credit columns, dates, descriptions, merchants, provider categories, IDs, notes, and card/profile
-identifiers. Code is only needed for genuinely non-tabular exports, preambles, unrelated tables,
-unsupported encodings, PDFs, or custom binary formats.
+credit columns, dates, descriptions, merchants, provider categories and transaction types, IDs,
+notes, and card/profile identifiers. Each CSV column is shown once in the mapping UI and can be
+assigned one app role or explicitly ignored. Code is only needed for genuinely non-tabular exports,
+preambles, unrelated tables, unsupported encodings, PDFs, or custom binary formats.
 
 ## Credit card accounts with multiple cards/profiles
 
@@ -304,6 +305,8 @@ npm audit
 - Amounts are positive `NUMERIC(14,2)` values; `direction` carries inflow/outflow meaning.
 - Spending is outflow `expense` activity not explicitly excluded. Transfers, card payments, and
   adjustments are excluded automatically when their type is set.
+- Institution mappings translate provider category/type labels first; the first matching explicit
+  rule may then override category, subcategory, transaction type, or spending treatment.
 - Exact provider transaction IDs are preferred for deduplication. Otherwise the key combines the
   user, account, optional instrument, dates, amount, direction, and normalized description.
 - Exact duplicate files are blocked unless the user explicitly opts to continue. Duplicate rows

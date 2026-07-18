@@ -13,10 +13,10 @@ class Settings(BaseSettings):
 
     app_env: str = "development"
     app_name: str = "personal-finance-manager"
-    frontend_host: str = "localhost"
+    frontend_host: str = "127.0.0.1"
     frontend_port: int = 5000
     cors_origins: str = ""
-    backend_host: str = "localhost"
+    backend_host: str = "127.0.0.1"
     backend_port: int = 9999
     backend_reload: bool = True
     api_root_path: str = ""

@@ -26,6 +26,7 @@ from app.schemas import (
     DeleteResult,
     DraftPatch,
     MappingIn,
+    MAPPING_FIELDS,
     MappingOut,
     MappingPatch,
 )
@@ -36,8 +37,10 @@ from app.services.imports.parsing import (
     file_hash,
     header_signature,
     parse_csv,
+    resolve_header_name,
 )
 from app.services.institutions import normalize_institution_name
+from app.services.transactions import sync_type_exclusion
 
 
 router = APIRouter(tags=["imports"])
@@ -115,13 +118,24 @@ async def upload_import(
         )
     proposed = (
         {
-            name: getattr(saved, name)
+            name: (
+                resolve_header_name(getattr(saved, name), headers)
+                if name in MAPPING_FIELDS
+                else getattr(saved, name)
+            )
             for name in MappingIn.model_fields
             if name != "institution_id" and hasattr(saved, name)
         }
         if saved
         else detect_mapping(headers, rows[:10])
     )
+    if saved:
+        proposed["confidence"] = {
+            field: 1.0 for field in MAPPING_FIELDS if proposed.get(field)
+        }
+        proposed["mapping_source"] = "saved"
+    else:
+        proposed["mapping_source"] = "detected"
     institution_id = (
         saved.institution_id
         if saved
@@ -230,6 +244,16 @@ def save_import_mapping(import_id: UUID, payload: MappingIn, db: Session = Depen
     item = owned_or_404(db, ImportFile, import_id, user.id)
     institution = owned_or_404(db, Institution, payload.institution_id, user.id)
     values = payload.model_dump()
+    invalid_columns = {
+        values[field]
+        for field in MAPPING_FIELDS
+        if values.get(field) and values[field] not in item.headers_json
+    }
+    if invalid_columns:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Mapped columns are not present in the CSV: {', '.join(sorted(invalid_columns))}",
+        )
     values["header_signature"] = header_signature(item.headers_json)
     mapping = ImportMapping(user_id=user.id, **values)
     mapping.institution = institution
@@ -303,10 +327,10 @@ def update_draft(import_id: UUID, draft_transaction_id: UUID, payload: DraftPatc
     if item.import_file_id != import_id:
         raise HTTPException(status_code=404, detail="Draft transaction not found in this import")
     apply_changes(item, payload)
-    if "review_status" not in payload.model_fields_set:
+    changed_fields = payload.model_fields_set
+    sync_type_exclusion(item, changed_fields)
+    if "review_status" not in changed_fields:
         item.review_status = ReviewStatus.edited
-    if item.transaction_type.value in ("transfer", "credit_card_payment", "adjustment"):
-        item.is_excluded_from_spending = True
     db.commit()
     return draft_dict(item)
 
@@ -323,6 +347,7 @@ def bulk_update_drafts(import_id: UUID, payload: BulkDraftPatch, db: Session = D
     ).all()
     for item in rows:
         apply_changes(item, payload.changes)
+        sync_type_exclusion(item, payload.changes.model_fields_set)
         item.review_status = payload.changes.review_status or ReviewStatus.edited
     db.commit()
     return {"updated": len(rows)}

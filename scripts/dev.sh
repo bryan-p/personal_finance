@@ -13,7 +13,7 @@ set -a
 source .env
 set +a
 
-required=(DATABASE_HOST DATABASE_PORT DATABASE_NAME DATABASE_USER DATABASE_PASSWORD SECRET_KEY FRONTEND_HOST FRONTEND_PORT BACKEND_HOST BACKEND_PORT NEXT_PUBLIC_API_BASE_URL)
+required=(DATABASE_HOST DATABASE_PORT DATABASE_NAME DATABASE_USER DATABASE_PASSWORD SECRET_KEY FRONTEND_HOST FRONTEND_PORT BACKEND_HOST BACKEND_PORT)
 for name in "${required[@]}"; do
   if [[ -z "${!name:-}" ]]; then
     echo "Missing required environment variable: $name" >&2
@@ -33,6 +33,11 @@ fi
 ./.venv/bin/python scripts/check_db.py
 ./scripts/run_migrations.sh
 
+frontend_bind_host="$FRONTEND_HOST"
+backend_bind_host="$BACKEND_HOST"
+if [[ "$frontend_bind_host" == "localhost" ]]; then frontend_bind_host="127.0.0.1"; fi
+if [[ "$backend_bind_host" == "localhost" ]]; then backend_bind_host="127.0.0.1"; fi
+
 cleanup() {
   trap - EXIT INT TERM
   [[ -n "${BACKEND_PID:-}" ]] && kill "$BACKEND_PID" 2>/dev/null || true
@@ -41,18 +46,18 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-echo "Frontend: http://${FRONTEND_HOST}:${FRONTEND_PORT}"
-echo "Backend:  http://${BACKEND_HOST}:${BACKEND_PORT}"
+echo "Frontend: http://${frontend_bind_host}:${FRONTEND_PORT}"
+echo "Backend:  http://${backend_bind_host}:${BACKEND_PORT}"
 
 reload_args=()
 if [[ "${BACKEND_RELOAD:-false}" == "true" ]]; then reload_args=(--reload); fi
 (
   cd backend
-  exec ../.venv/bin/python -m uvicorn app.main:app --host "$BACKEND_HOST" --port "$BACKEND_PORT" "${reload_args[@]}"
+  exec ../.venv/bin/python -m uvicorn app.main:app --host "$backend_bind_host" --port "$BACKEND_PORT" "${reload_args[@]}"
 ) &
 BACKEND_PID=$!
 
-npm --prefix frontend run dev -- --hostname "$FRONTEND_HOST" --port "$FRONTEND_PORT" &
+npm --prefix frontend run dev -- --hostname "$frontend_bind_host" --port "$FRONTEND_PORT" &
 FRONTEND_PID=$!
 
 wait -n "$BACKEND_PID" "$FRONTEND_PID"
