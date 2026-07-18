@@ -65,6 +65,14 @@ def import_summary(item: ImportFile):
     }
 
 
+def import_storage_path(item: ImportFile) -> Path:
+    root = settings.upload_path.resolve()
+    path = Path(item.storage_path).resolve()
+    if not path.is_relative_to(root):
+        raise HTTPException(status_code=404, detail="Import file not found")
+    return path
+
+
 @router.post("/imports/upload", status_code=201)
 async def upload_import(
     account_id: UUID = Form(...),
@@ -177,6 +185,38 @@ def get_import(import_id: UUID, db: Session = Depends(get_db), user=Depends(get_
         "proposed_mapping": item.proposed_mapping_json,
         "header_signature": header_signature(item.headers_json),
     }
+
+
+@router.delete("/imports/{import_id}", response_model=APIMessage)
+def delete_import(import_id: UUID, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    item = owned_or_404(db, ImportFile, import_id, user.id)
+    if item.status not in {ImportStatus.failed, ImportStatus.cancelled}:
+        raise HTTPException(
+            status_code=409,
+            detail="Only failed or cancelled imports can be deleted",
+        )
+    linked_transaction = db.scalar(
+        select(Transaction.id).where(
+            Transaction.user_id == user.id,
+            Transaction.import_file_id == item.id,
+        ).limit(1)
+    )
+    if linked_transaction:
+        raise HTTPException(
+            status_code=409,
+            detail="Import cannot be deleted while confirmed transactions reference it",
+        )
+    path = import_storage_path(item)
+    db.delete(item)
+    db.commit()
+    try:
+        path.unlink(missing_ok=True)
+    except OSError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Import record deleted, but the stored CSV could not be removed",
+        ) from exc
+    return {"message": "Import and stored CSV deleted"}
 
 
 @router.get("/imports/{import_id}/preview")

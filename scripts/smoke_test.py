@@ -18,6 +18,11 @@ from app.models import User  # noqa: E402
 email = f"smoke-{uuid.uuid4()}@example.com"
 client = TestClient(app)
 import_id = None
+<<<<<<< Updated upstream
+=======
+statement_document_id = None
+deletable_import_ids = []
+>>>>>>> Stashed changes
 try:
     response = client.post(
         "/auth/register",
@@ -110,7 +115,60 @@ try:
     assert client.get("/transactions/export").status_code == 200
     assert client.get("/dashboard/summary?start_date=2026-07-01&end_date=2026-07-31").status_code == 200
     assert client.get(f"/dashboard/instrument-summary?account_id={account_id}&start_date=2026-07-01&end_date=2026-07-31").status_code == 200
+<<<<<<< Updated upstream
     assert client.delete(f"/institutions/{institution_id}").status_code == 405
+=======
+    assert client.delete(f"/imports/{import_id}").status_code == 409
+
+    cancelled_content = b"Date,Description,Amount\n2026-07-10,CANCELLED TEST,1.00\n"
+    response = client.post(
+        "/imports/upload",
+        data={"account_id": account_id},
+        files={"file": ("cancelled.csv", io.BytesIO(cancelled_content), "text/csv")},
+    )
+    assert response.status_code == 201, response.text
+    cancelled_import_id = response.json()["id"]
+    deletable_import_ids.append(cancelled_import_id)
+    cancelled_path = Path("backend/storage/imports", f"{cancelled_import_id}.csv")
+    assert cancelled_path.exists()
+    assert client.post(f"/imports/{cancelled_import_id}/cancel").status_code == 200
+    response = client.delete(f"/imports/{cancelled_import_id}")
+    assert response.status_code == 200, response.text
+    assert client.get(f"/imports/{cancelled_import_id}").status_code == 404
+    assert not cancelled_path.exists()
+
+    failed_content = b"Date,Description,Amount\nnot-a-date,FAILED TEST,2.00\n"
+    response = client.post(
+        "/imports/upload",
+        data={"account_id": account_id},
+        files={"file": ("failed.csv", io.BytesIO(failed_content), "text/csv")},
+    )
+    assert response.status_code == 201, response.text
+    failed_import_id = response.json()["id"]
+    deletable_import_ids.append(failed_import_id)
+    failed_path = Path("backend/storage/imports", f"{failed_import_id}.csv")
+    response = client.post(
+        f"/imports/{failed_import_id}/mapping",
+        json={
+            "institution_id": institution_id,
+            "account_type": "credit_card",
+            "mapping_name": "Failed smoke mapping",
+            "date_column": "Date",
+            "description_column": "Description",
+            "amount_column": "Amount",
+            "amount_behavior": "charges_positive",
+        },
+    )
+    assert response.status_code == 200, response.text
+    failed_mapping_id = response.json()["id"]
+    response = client.post(f"/imports/{failed_import_id}/normalize?mapping_id={failed_mapping_id}")
+    assert response.status_code == 422, response.text
+    assert client.get(f"/imports/{failed_import_id}").json()["status"] == "failed"
+    response = client.delete(f"/imports/{failed_import_id}")
+    assert response.status_code == 200, response.text
+    assert client.get(f"/imports/{failed_import_id}").status_code == 404
+    assert not failed_path.exists()
+>>>>>>> Stashed changes
 
     impact = client.get(f"/accounts/{account_id}/deletion-impact")
     assert impact.status_code == 200, impact.text
@@ -141,3 +199,5 @@ finally:
             db.commit()
     if import_id:
         Path("backend/storage/imports", f"{import_id}.csv").unlink(missing_ok=True)
+    for temporary_import_id in deletable_import_ids:
+        Path("backend/storage/imports", f"{temporary_import_id}.csv").unlink(missing_ok=True)
