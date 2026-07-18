@@ -9,6 +9,11 @@ import type { Category, DraftTransaction, ImportRecord, Instrument } from "@/lib
 
 const types = ["expense", "income", "transfer", "credit_card_payment", "refund", "fee", "adjustment", "other"];
 
+function willImport(row: DraftTransaction) {
+  return row.review_status !== "skipped"
+    && (row.duplicate_status !== "duplicate" || row.review_status === "approved");
+}
+
 export default function ReviewPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -25,7 +30,7 @@ export default function ReviewPage() {
   async function load() {
     try {
       const [drafts, info, cats] = await Promise.all([
-        api<DraftTransaction[]>(`/imports/${id}/review${filter ? `?instrument_id=${filter}` : ""}`),
+        api<DraftTransaction[]>(`/imports/${id}/review`),
         api<ImportRecord>(`/imports/${id}`),
         api<Category[]>("/categories"),
       ]);
@@ -39,11 +44,13 @@ export default function ReviewPage() {
     }
   }
 
-  useEffect(() => { load(); }, [id, filter]);
+  useEffect(() => { load(); }, [id]);
+  useEffect(() => { setSelected(new Set()); }, [filter]);
 
   async function change(row: DraftTransaction, changes: Record<string, unknown>) {
+    const nextReviewStatus = typeof changes.review_status === "string" ? changes.review_status : "edited";
     setRows((current) => current.map((candidate) => candidate.id === row.id
-      ? { ...candidate, ...changes, review_status: "edited" } as DraftTransaction
+      ? { ...candidate, ...changes, review_status: nextReviewStatus } as DraftTransaction
       : candidate));
     try {
       await api(`/imports/${id}/draft-transactions/${row.id}`, {
@@ -128,15 +135,23 @@ export default function ReviewPage() {
   }
 
   function toggleAll() {
-    setSelected(selected.size === rows.length ? new Set() : new Set(rows.map((row) => row.id)));
+    setSelected(allSelected ? new Set() : new Set(displayedRows.map((row) => row.id)));
   }
 
   const counts = useMemo(() => ({
-    duplicate: rows.filter((row) => row.duplicate_status === "duplicate").length,
-    uncategorized: rows.filter((row) => !row.category_id).length,
+    willImport: rows.filter(willImport).length,
+    skipped: rows.filter((row) => row.review_status === "skipped").length,
+    duplicateExcluded: rows.filter((row) => row.duplicate_status === "duplicate" && row.review_status !== "approved" && row.review_status !== "skipped").length,
+    duplicateIncluded: rows.filter((row) => row.duplicate_status === "duplicate" && row.review_status === "approved").length,
+    uncategorized: rows.filter((row) => willImport(row) && !row.category_id).length,
     rules: rows.filter((row) => row.rule_applied).length,
   }), [rows]);
-  const allSelected = rows.length > 0 && selected.size === rows.length;
+  const displayedRows = useMemo(
+    () => filter ? rows.filter((row) => row.account_instrument_id === filter) : rows,
+    [filter, rows],
+  );
+  const allSelected = displayedRows.length > 0 && displayedRows.every((row) => selected.has(row.id));
+  const importLabel = `${counts.willImport} transaction${counts.willImport === 1 ? "" : "s"}`;
 
   return <>
     <div className="steps"><div className="step done"/><div className="step done"/><div className="step active"/></div>
@@ -146,12 +161,15 @@ export default function ReviewPage() {
       description={`${item?.original_filename || "CSV"} · ${rows.length} rows. Edits save immediately, so you can safely return later.`}
       actions={<>
         <button className="button" onClick={() => router.push("/imports")}>Resume later</button>
-        <button className="button button-primary" onClick={confirm} disabled={confirming || deleting}>{confirming ? "Importing…" : "Confirm import"}</button>
+        <button className="button button-primary" onClick={confirm} disabled={confirming || deleting}>{confirming ? "Importing…" : `Confirm ${importLabel}`}</button>
       </>}
     />
     {error && <div className="notice notice-error">{error}</div>}
     <div className="toolbar">
-      <Badge tone={counts.duplicate ? "danger" : "good"}>{counts.duplicate} duplicates</Badge>
+      <Badge tone="good">{importLabel} will import</Badge>
+      <Badge tone={counts.skipped ? "warn" : "good"}>{counts.skipped} skipped</Badge>
+      <Badge tone={counts.duplicateExcluded ? "danger" : "good"}>{counts.duplicateExcluded} duplicates excluded</Badge>
+      {counts.duplicateIncluded > 0 && <Badge tone="warn">{counts.duplicateIncluded} duplicates included</Badge>}
       <Badge tone={counts.uncategorized ? "warn" : "good"}>{counts.uncategorized} uncategorized</Badge>
       <Badge tone="accent">{counts.rules} rule-applied</Badge>
       {selected.size > 0 && <div className="selection-actions">
@@ -167,18 +185,31 @@ export default function ReviewPage() {
       </div>
     </div>
     <div className="card table-card">
-      {!rows.length ? <EmptyState title="No draft rows" body="Normalize the import mapping first, or clear the active card/profile filter."/> : <div className="table-scroll">
+      {!displayedRows.length ? <EmptyState title="No draft rows" body="Normalize the import mapping first, or clear the active card/profile filter."/> : <div className="table-scroll">
         <table className="data-table">
           <thead><tr>
             <th className="selection-cell"><input type="checkbox" checked={allSelected} onChange={toggleAll} aria-label="Select all displayed draft transactions"/></th>
-            <th>Flags</th><th>Date</th><th>Description</th><th>Amount</th><th>Category</th><th>Type</th><th>Card/profile</th><th>Excluded</th><th>Recurring</th><th>Review</th><th>Actions</th>
+            <th>Flags</th><th>Date</th><th>Description</th><th>Amount</th><th>Category</th><th>Type</th><th>Card/profile</th><th>Excluded</th><th>Recurring</th><th>Skip</th><th>Actions</th>
           </tr></thead>
-          <tbody>{rows.map((row) => {
+          <tbody>{displayedRows.map((row) => {
             const category = categories.find((candidate) => candidate.id === row.category_id);
-            return <tr key={row.id} className={row.is_excluded_from_spending ? "excluded-row" : ""}>
+            const rowClasses = [row.is_excluded_from_spending && "excluded-row", row.review_status === "skipped" && "skipped-row"].filter(Boolean).join(" ");
+            return <tr key={row.id} className={rowClasses}>
               <td className="selection-cell"><input type="checkbox" checked={selected.has(row.id)} onChange={() => toggle(row.id)} aria-label={`Select ${row.description_clean}`}/></td>
               <td><div className="flag-stack">
-                {row.duplicate_status !== "new" && <Badge tone="danger">duplicate</Badge>}
+                {row.duplicate_status === "duplicate" && <>
+                  <Badge tone="danger">duplicate</Badge>
+                  <label className="inline-check" title="Exact duplicates are excluded unless you explicitly include them">
+                    <input
+                      type="checkbox"
+                      checked={row.review_status === "approved"}
+                      disabled={row.review_status === "skipped"}
+                      onChange={(event) => change(row, { review_status: event.target.checked ? "approved" : "pending" })}
+                    />
+                    Import anyway
+                  </label>
+                </>}
+                {row.duplicate_status === "possible_duplicate" && <Badge tone="warn">possible duplicate</Badge>}
                 {!row.category_id && <Badge tone="warn">uncategorized</Badge>}
                 {row.rule_applied && <Badge tone="accent">rule</Badge>}
                 {row.recurring_candidate && <Badge tone="good">recurring?</Badge>}
@@ -195,7 +226,7 @@ export default function ReviewPage() {
               <td><select className="select" value={row.account_instrument_id || ""} onChange={(event) => change(row, { account_instrument_id: event.target.value || null })}><option value="">Parent account</option>{instruments.map((instrument) => <option key={instrument.id} value={instrument.id}>{instrument.display_name}</option>)}</select>{row.card_last_four && <small className="muted">Source •••• {row.card_last_four}</small>}</td>
               <td><input type="checkbox" checked={row.is_excluded_from_spending} onChange={(event) => change(row, { is_excluded_from_spending: event.target.checked })}/></td>
               <td><input type="checkbox" checked={row.is_recurring} onChange={(event) => change(row, { is_recurring: event.target.checked })}/></td>
-              <td><select className="select" value={row.review_status} onChange={(event) => change(row, { review_status: event.target.value })}><option value="pending">Pending</option><option value="approved">Approved</option><option value="skipped">Skip</option></select></td>
+              <td className="skip-cell"><input type="checkbox" checked={row.review_status === "skipped"} onChange={(event) => change(row, { review_status: event.target.checked ? "skipped" : "pending" })} aria-label={`Skip ${row.description_clean}`}/></td>
               <td><button className="icon-button danger" onClick={() => deleteDrafts([row.id])} disabled={deleting} aria-label={`Delete ${row.description_clean}`}><Trash2 size={16}/></button></td>
             </tr>;
           })}</tbody>
