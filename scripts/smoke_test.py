@@ -18,11 +18,8 @@ from app.models import User  # noqa: E402
 email = f"smoke-{uuid.uuid4()}@example.com"
 client = TestClient(app)
 import_id = None
-<<<<<<< Updated upstream
-=======
 statement_document_id = None
 deletable_import_ids = []
->>>>>>> Stashed changes
 try:
     response = client.post(
         "/auth/register",
