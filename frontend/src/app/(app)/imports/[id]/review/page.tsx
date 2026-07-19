@@ -6,7 +6,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Badge, EmptyState, PageHeader } from "@/components/Page";
 import { RuleForm } from "@/components/RuleForm";
 import { api, money, shortDate } from "@/lib/api";
-import { soleActiveSubcategoryId } from "@/lib/categories";
+import { impliedTransactionType, soleActiveSubcategoryId } from "@/lib/categories";
 import type { Category, DraftTransaction, ImportRecord, Instrument, Rule, Subcategory } from "@/lib/types";
 
 const types = ["expense", "income", "transfer", "credit_card_payment", "refund", "fee", "adjustment", "other"];
@@ -70,10 +70,13 @@ export default function ReviewPage() {
       ? { ...candidate, ...changes, review_status: nextReviewStatus } as DraftTransaction
       : candidate));
     try {
-      await api(`/imports/${id}/draft-transactions/${row.id}`, {
+      const saved = await api<DraftTransaction>(`/imports/${id}/draft-transactions/${row.id}`, {
         method: "PATCH",
         body: JSON.stringify(changes),
       });
+      setRows((current) => current.map((candidate) => candidate.id === row.id
+        ? { ...candidate, ...saved }
+        : candidate));
       return true;
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not save edit");
@@ -305,9 +308,11 @@ export default function ReviewPage() {
                   }
                   const categoryId = event.target.value || null;
                   const selectedCategory = categories.find((candidate) => candidate.id === categoryId);
+                  const transactionType = impliedTransactionType(selectedCategory);
                   change(row, {
                     category_id: categoryId,
                     subcategory_id: soleActiveSubcategoryId(selectedCategory),
+                    ...(transactionType ? { transaction_type: transactionType } : {}),
                   });
                 }}>
                   <option value="">Uncategorized</option>

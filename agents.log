@@ -167,3 +167,17 @@ Sole-active-subcategory auto-select shipped via shared helper frontend/src/lib/c
 
 ### Session done (part 5)
 Auto-select complete, uncommitted.
+
+## Session: 2026-07-19 (part 6)
+Goal: Category 'Credit Card Payment' implies transaction_type=credit_card_payment on category change (review, transactions, RuleForm).
+
+### Spawned: edb16108
+Type: implementation
+Prompt: impliedTransactionType helper in lib/categories.ts; auto-set type in same PATCH on review+transactions; RuleForm user-driven auto-select; never clear type for other categories.
+Sandbox: workspace-write
+
+### Complete: edb16108
+impliedTransactionType helper (seeded category is 'Credit Card Payments', plural); type auto-set in same PATCH on review+transactions with response merge (exclusion refresh); RuleForm user-driven only. Orchestrator added singular 'credit card payment' to the map (one-line) and re-verified lint+build. 58 backend tests pass.
+
+### Session done (part 6)
+Credit-card-payment type implication complete, uncommitted.

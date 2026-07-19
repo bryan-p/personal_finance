@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react";
 import { X } from "lucide-react";
 import { api } from "@/lib/api";
-import { soleActiveSubcategoryId } from "@/lib/categories";
+import { impliedTransactionType, soleActiveSubcategoryId } from "@/lib/categories";
 import type { Category, Rule, RuleMatchField, RuleMatchOperator } from "@/lib/types";
 
 const matchFields: RuleMatchField[] = [
@@ -123,10 +123,12 @@ export function RuleForm({ categories, mode, rule, initialValues, onClose, onSuc
 
   function changeCategory(categoryId: string) {
     const category = categories.find((candidate) => candidate.id === categoryId);
+    const transactionType = impliedTransactionType(category);
     setValues((current) => ({
       ...current,
       category_id: categoryId,
       subcategory_id: soleActiveSubcategoryId(category) || "",
+      ...(transactionType ? { transaction_type: transactionType } : {}),
     }));
   }
 

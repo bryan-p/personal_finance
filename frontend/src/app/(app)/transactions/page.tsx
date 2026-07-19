@@ -4,7 +4,7 @@ import { Download, Search, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Badge, EmptyState, PageHeader } from "@/components/Page";
 import { API_BASE, api, money, shortDate } from "@/lib/api";
-import { soleActiveSubcategoryId } from "@/lib/categories";
+import { impliedTransactionType, soleActiveSubcategoryId } from "@/lib/categories";
 import type { Account, Category, Instrument, Transaction } from "@/lib/types";
 
 const transactionTypes = ["expense", "income", "transfer", "credit_card_payment", "refund", "fee", "adjustment", "other"];
@@ -81,10 +81,13 @@ export default function TransactionsPage() {
       ? { ...candidate, ...changes } as Transaction
       : candidate));
     try {
-      await api(`/transactions/${row.id}`, {
+      const saved = await api<Transaction>(`/transactions/${row.id}`, {
         method: "PATCH",
         body: JSON.stringify(changes),
       });
+      setRows((current) => current.map((candidate) => candidate.id === row.id
+        ? { ...candidate, ...saved }
+        : candidate));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not save transaction");
       await loadTransactions();
@@ -174,9 +177,11 @@ export default function TransactionsPage() {
               <td><select className="select" value={row.category_id || ""} onChange={(event) => {
                 const categoryId = event.target.value || null;
                 const selectedCategory = categories.find((category) => category.id === categoryId);
+                const transactionType = impliedTransactionType(selectedCategory);
                 change(row, {
                   category_id: categoryId,
                   subcategory_id: soleActiveSubcategoryId(selectedCategory),
+                  ...(transactionType ? { transaction_type: transactionType } : {}),
                 });
               }}><option value="">Uncategorized</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></td>
               <td><select className="select" value={row.transaction_type} onChange={(event) => change(row, { transaction_type: event.target.value })}>{transactionTypes.map((type) => <option key={type} value={type}>{type.replaceAll("_", " ")}</option>)}</select>{row.source_transaction_type && <small className="muted">Source: {row.source_transaction_type}</small>}</td>
