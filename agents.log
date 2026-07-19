@@ -97,3 +97,56 @@ All six findings fixed: delete clears draft applied_rule_id refs first; RuleOut 
 
 ### Session done (part 2)
 Delete UI + regex timeout + schema hardening complete, uncommitted.
+
+## Session: 2026-07-19 (part 3)
+Goal: 'Add new…' option in category / subcategory / transaction-type dropdowns on the import review screen.
+
+### Spawned: 4544cc73
+Type: research
+Prompt: How transaction types are defined (enum vs free string, downstream effects); category/subcategory create contracts; review-page dropdown state; inline-add patterns; recommendation per dropdown.
+Sandbox: read-only
+
+### Complete: 4544cc73 (research)
+- Transaction types = fixed 8-value Python enum, Pydantic-validated everywhere; dashboards/recurring keyed to expense/income; frontend list duplicated in 4 files. Custom types need real design (behavior mapping) — USER DECISION: skip types for now.
+- POST /categories + POST /subcategories exist; duplicates currently 500 (IntegrityError, no friendly 409); splice-into-state recipe for review page (avoid load() — clears selection).
+- Inline-add pattern precedent: mapping page institution picker; categories page modal pattern.
+
+### Spawned: 55d5b8ac
+Type: implementation
+Prompt: 'Add new…' sentinel options in review-page category+subcategory dropdowns, compact modal, splice into state + assign to row; 409 duplicate handling on category/subcategory POST; types untouched.
+Sandbox: workspace-write
+
+### Complete: 55d5b8ac
+Inline add-new done: sentinel options + compact modal on review page; state splice + row assignment without load(); 409 duplicate checks on POST /categories and /subcategories; route tests. Verified: lint, build, 56 backend tests.
+
+### Spawned: 5130667e
+Type: review (sentinel/state handling, 409 race, tests)
+Sandbox: read-only
+
+### Complete: 5130667e (review)
+- P2: duplicate pre-check race -> IntegrityError 500 on concurrent creates (both endpoints).
+- P2: modal closes + success feedback before draft PATCH resolves; change() swallows failure -> false 'created and assigned'.
+
+### Spawned: 4e28140b
+Type: fix (IntegrityError->409 fallback + honest assignment feedback)
+Sandbox: workspace-write
+
+### Complete: 4e28140b (fixes)
+IntegrityError caught -> rollback -> friendly 409 on both create endpoints (+ race-path tests); change() returns success bool, modal awaits PATCH and reports 'created but could not be assigned' on failure. Orchestrator re-verified: 58 backend tests pass.
+
+### Session done (part 3)
+Inline category/subcategory creation on import review complete, uncommitted. Types intentionally skipped (user decision).
+
+## Session: 2026-07-19 (part 4)
+Goal: Grey out duplicate rows on import review to signal they're excluded by default.
+
+### Spawned: 1bcc83f0
+Type: implementation
+Prompt: Muted row treatment for duplicate/excluded-by-default draft rows on review page; live toggle with skip/include; badge if none exists.
+Sandbox: workspace-write
+
+### Complete: 1bcc83f0
+Duplicate rows (duplicate_status="duplicate" and not importing) get themed grey row treatment via .duplicate-excluded-row (var(--surface-2)/var(--muted)); lifts live when 'Import anyway' approves the row; existing duplicate badge kept. Verified: lint, build. Orchestrator eyeballed diff — condition and theming correct.
+
+### Session done (part 4)
+Duplicate de-emphasis complete, uncommitted.

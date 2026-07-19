@@ -1,18 +1,28 @@
 "use client";
 
-import { Trash2 } from "lucide-react";
+import { Trash2, X } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Badge, EmptyState, PageHeader } from "@/components/Page";
 import { RuleForm } from "@/components/RuleForm";
 import { api, money, shortDate } from "@/lib/api";
-import type { Category, DraftTransaction, ImportRecord, Instrument, Rule } from "@/lib/types";
+import type { Category, DraftTransaction, ImportRecord, Instrument, Rule, Subcategory } from "@/lib/types";
 
 const types = ["expense", "income", "transfer", "credit_card_payment", "refund", "fee", "adjustment", "other"];
+const ADD_CATEGORY_VALUE = "__add_category__";
+const ADD_SUBCATEGORY_VALUE = "__add_subcategory__";
+
+type TaxonomyModal =
+  | { kind: "category"; rowId: string }
+  | { kind: "subcategory"; rowId: string; categoryId: string };
 
 function willImport(row: DraftTransaction) {
   return row.review_status !== "skipped"
     && (row.duplicate_status !== "duplicate" || row.review_status === "approved");
+}
+
+function isExcludedDuplicate(row: DraftTransaction) {
+  return row.duplicate_status === "duplicate" && !willImport(row);
 }
 
 export default function ReviewPage() {
@@ -26,6 +36,9 @@ export default function ReviewPage() {
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
   const [ruleDefaults, setRuleDefaults] = useState<Partial<Rule> | null>(null);
+  const [taxonomyModal, setTaxonomyModal] = useState<TaxonomyModal | null>(null);
+  const [taxonomyError, setTaxonomyError] = useState("");
+  const [taxonomySaving, setTaxonomySaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [filter, setFilter] = useState("");
@@ -60,9 +73,11 @@ export default function ReviewPage() {
         method: "PATCH",
         body: JSON.stringify(changes),
       });
+      return true;
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not save edit");
       await load();
+      return false;
     }
   }
 
@@ -81,6 +96,68 @@ export default function ReviewPage() {
       subcategory_id: row.subcategory_id || null,
       merchant_name_override: row.merchant_name || null,
     });
+  }
+
+  function openTaxonomyModal(modal: TaxonomyModal) {
+    setTaxonomyError("");
+    setTaxonomyModal(modal);
+  }
+
+  function closeTaxonomyModal() {
+    setTaxonomyError("");
+    setTaxonomyModal(null);
+  }
+
+  async function createTaxonomyItem(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!taxonomyModal) return;
+
+    const row = rows.find((candidate) => candidate.id === taxonomyModal.rowId);
+    if (!row) {
+      setTaxonomyError("This draft transaction is no longer available");
+      return;
+    }
+
+    const form = new FormData(event.currentTarget);
+    const name = String(form.get("name") || "");
+    const description = String(form.get("description") || "") || null;
+    setTaxonomySaving(true);
+    setTaxonomyError("");
+    try {
+      if (taxonomyModal.kind === "category") {
+        const created = await api<Category>("/categories", {
+          method: "POST",
+          body: JSON.stringify({ name, description }),
+        });
+        setCategories((current) => [...current, created]);
+        const assigned = await change(row, { category_id: created.id, subcategory_id: null });
+        closeTaxonomyModal();
+        setFeedback(assigned
+          ? `Category “${created.name}” created and assigned.`
+          : `Category “${created.name}” was created, but could not be assigned to this row.`);
+      } else {
+        const created = await api<Subcategory>("/subcategories", {
+          method: "POST",
+          body: JSON.stringify({
+            category_id: taxonomyModal.categoryId,
+            name,
+            description,
+          }),
+        });
+        setCategories((current) => current.map((category) => category.id === taxonomyModal.categoryId
+          ? { ...category, subcategories: [...category.subcategories, created] }
+          : category));
+        const assigned = await change(row, { subcategory_id: created.id });
+        closeTaxonomyModal();
+        setFeedback(assigned
+          ? `Subcategory “${created.name}” created and assigned.`
+          : `Subcategory “${created.name}” was created, but could not be assigned to this row.`);
+      }
+    } catch (reason) {
+      setTaxonomyError(reason instanceof Error ? reason.message : "Could not create category");
+    } finally {
+      setTaxonomySaving(false);
+    }
   }
 
   async function confirm() {
@@ -145,6 +222,9 @@ export default function ReviewPage() {
   );
   const allSelected = displayedRows.length > 0 && displayedRows.every((row) => selected.has(row.id));
   const importLabel = `${counts.willImport} transaction${counts.willImport === 1 ? "" : "s"}`;
+  const modalCategory = taxonomyModal?.kind === "subcategory"
+    ? categories.find((category) => category.id === taxonomyModal.categoryId)
+    : null;
 
   return <>
     <div className="steps"><div className="step done"/><div className="step done"/><div className="step active"/></div>
@@ -187,7 +267,11 @@ export default function ReviewPage() {
           </tr></thead>
           <tbody>{displayedRows.map((row) => {
             const category = categories.find((candidate) => candidate.id === row.category_id);
-            const rowClasses = [row.is_excluded_from_spending && "excluded-row", row.review_status === "skipped" && "skipped-row"].filter(Boolean).join(" ");
+            const rowClasses = [
+              row.is_excluded_from_spending && "excluded-row",
+              row.review_status === "skipped" && "skipped-row",
+              isExcludedDuplicate(row) && "duplicate-excluded-row",
+            ].filter(Boolean).join(" ");
             return <tr key={row.id} className={rowClasses}>
               <td className="selection-cell"><input type="checkbox" checked={selected.has(row.id)} onChange={() => toggle(row.id)} aria-label={`Select ${row.description_clean}`}/></td>
               <td><div className="flag-stack">
@@ -213,8 +297,28 @@ export default function ReviewPage() {
               <td><input className="input" value={row.description_clean} onChange={(event) => setRows((current) => current.map((candidate) => candidate.id === row.id ? { ...candidate, description_clean: event.target.value } : candidate))} onBlur={(event) => change(row, { description_clean: event.target.value })}/>{row.cardholder_name && <small className="muted">{row.cardholder_name}</small>}</td>
               <td className={`amount ${row.direction}`}>{row.direction === "inflow" ? "+" : "−"}{money(row.amount)}</td>
               <td>
-                <select className="select" value={row.category_id || ""} onChange={(event) => change(row, { category_id: event.target.value || null, subcategory_id: null })}><option value="">Uncategorized</option>{categories.filter((candidate) => candidate.is_active).map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}</select>
-                <select className="select" value={row.subcategory_id || ""} onChange={(event) => change(row, { subcategory_id: event.target.value || null })}><option value="">No subcategory</option>{category?.subcategories.filter((subcategory) => subcategory.is_active).map((subcategory) => <option key={subcategory.id} value={subcategory.id}>{subcategory.name}</option>)}</select>
+                <select className="select" value={row.category_id || ""} onChange={(event) => {
+                  if (event.target.value === ADD_CATEGORY_VALUE) {
+                    openTaxonomyModal({ kind: "category", rowId: row.id });
+                    return;
+                  }
+                  change(row, { category_id: event.target.value || null, subcategory_id: null });
+                }}>
+                  <option value="">Uncategorized</option>
+                  {categories.filter((candidate) => candidate.is_active).map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
+                  <option value={ADD_CATEGORY_VALUE}>Add new category…</option>
+                </select>
+                <select className="select" value={row.subcategory_id || ""} disabled={!category} onChange={(event) => {
+                  if (event.target.value === ADD_SUBCATEGORY_VALUE && category) {
+                    openTaxonomyModal({ kind: "subcategory", rowId: row.id, categoryId: category.id });
+                    return;
+                  }
+                  change(row, { subcategory_id: event.target.value || null });
+                }}>
+                  <option value="">No subcategory</option>
+                  {category?.subcategories.filter((subcategory) => subcategory.is_active).map((subcategory) => <option key={subcategory.id} value={subcategory.id}>{subcategory.name}</option>)}
+                  {category && <option value={ADD_SUBCATEGORY_VALUE}>Add new subcategory…</option>}
+                </select>
               </td>
               <td><select className="select" value={row.transaction_type} onChange={(event) => change(row, { transaction_type: event.target.value, is_excluded_from_spending: ["transfer", "credit_card_payment", "adjustment"].includes(event.target.value) })}>{types.map((type) => <option key={type} value={type}>{type.replaceAll("_", " ")}</option>)}</select>{row.source_transaction_type && <small className="muted">Source: {row.source_transaction_type}</small>}</td>
               <td><select className="select" value={row.account_instrument_id || ""} onChange={(event) => change(row, { account_instrument_id: event.target.value || null })}><option value="">Parent account</option>{instruments.map((instrument) => <option key={instrument.id} value={instrument.id}>{instrument.display_name}</option>)}</select>{row.card_last_four && <small className="muted">Source •••• {row.card_last_four}</small>}</td>
@@ -227,6 +331,33 @@ export default function ReviewPage() {
         </table>
       </div>}
     </div>
+    {taxonomyModal && <div className="modal-backdrop">
+      <div className="modal" style={{ width: "min(440px, 100%)" }} role="dialog" aria-modal="true" aria-labelledby="taxonomy-modal-title">
+        <div className="modal-header">
+          <h2 id="taxonomy-modal-title">Add new {taxonomyModal.kind}</h2>
+          <button className="icon-button" type="button" onClick={closeTaxonomyModal} disabled={taxonomySaving} aria-label="Close category form"><X/></button>
+        </div>
+        {taxonomyError && <div className="notice notice-error">{taxonomyError}</div>}
+        <form onSubmit={createTaxonomyItem}>
+          {taxonomyModal.kind === "subcategory" && <div className="field" style={{ marginBottom: 14 }}>
+            <label>Parent category</label>
+            <input className="input" value={modalCategory?.name || ""} readOnly/>
+          </div>}
+          <div className="field">
+            <label>Name</label>
+            <input className="input" name="name" required maxLength={120} autoFocus/>
+          </div>
+          <div className="field" style={{ marginTop: 14 }}>
+            <label>Description (optional)</label>
+            <textarea className="textarea" name="description"/>
+          </div>
+          <div className="form-actions">
+            <button type="button" className="button" onClick={closeTaxonomyModal} disabled={taxonomySaving}>Cancel</button>
+            <button className="button button-primary" disabled={taxonomySaving}>{taxonomySaving ? "Saving…" : "Save"}</button>
+          </div>
+        </form>
+      </div>
+    </div>}
     {ruleDefaults && <RuleForm
       categories={categories}
       mode="create"

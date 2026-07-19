@@ -2,6 +2,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import apply_changes, owned_or_404
@@ -54,9 +55,27 @@ def list_categories(db: Session = Depends(get_db), user=Depends(get_current_user
 
 @router.post("/categories", response_model=CategoryOut, status_code=201)
 def create_category(payload: CategoryIn, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    existing = db.scalar(
+        select(Category).where(
+            Category.user_id == user.id,
+            Category.name == payload.name,
+        )
+    )
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail="A category with this name already exists",
+        )
     item = Category(user_id=user.id, is_system=False, **payload.model_dump())
     db.add(item)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="A category with this name already exists",
+        ) from exc
     return item
 
 
@@ -79,9 +98,27 @@ def disable_category(category_id: UUID, db: Session = Depends(get_db), user=Depe
 @router.post("/subcategories", response_model=SubcategoryOut, status_code=201)
 def create_subcategory(payload: SubcategoryIn, db: Session = Depends(get_db), user=Depends(get_current_user)):
     owned_or_404(db, Category, payload.category_id, user.id)
+    existing = db.scalar(
+        select(Subcategory).where(
+            Subcategory.category_id == payload.category_id,
+            Subcategory.name == payload.name,
+        )
+    )
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail="A subcategory with this name already exists in the selected category",
+        )
     item = Subcategory(user_id=user.id, is_system=False, **payload.model_dump())
     db.add(item)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="A subcategory with this name already exists in the selected category",
+        ) from exc
     return item
 
 
