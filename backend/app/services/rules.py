@@ -1,6 +1,29 @@
 import re
 from decimal import Decimal, InvalidOperation
 
+try:
+    import regex
+except ImportError:  # pragma: no cover - production installs it from requirements.txt
+    regex = None
+
+
+REGEX_MATCH_TIMEOUT_SECONDS = 0.1
+
+
+def validate_regex_pattern(pattern: str) -> None:
+    if regex is None:
+        try:
+            re.compile(pattern, re.IGNORECASE)
+        except re.error as exc:
+            raise ValueError(f"Invalid regular expression: {exc}") from None
+        raise ValueError(
+            "Regular expression rules are unavailable because the 'regex' package is not installed"
+        )
+    try:
+        regex.compile(pattern, regex.IGNORECASE)
+    except regex.error as exc:
+        raise ValueError(f"Invalid regular expression: {exc}") from None
+
 
 def rule_matches(transaction, rule, db=None) -> bool:
     field = rule.match_field.value
@@ -46,9 +69,17 @@ def rule_matches(transaction, rule, db=None) -> bool:
     if operator == "starts_with":
         return left.startswith(right)
     if operator == "regex":
+        # Never fall back to stdlib re for matching: it cannot enforce a timeout.
+        if regex is None:
+            return False
         try:
-            return re.search(expected, str(actual), re.IGNORECASE) is not None
-        except re.error:
+            return regex.search(
+                expected,
+                str(actual),
+                regex.IGNORECASE,
+                timeout=REGEX_MATCH_TIMEOUT_SECONDS,
+            ) is not None
+        except (regex.error, TimeoutError):
             return False
     return False
 

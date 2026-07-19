@@ -1,19 +1,158 @@
 "use client";
-import { FormEvent, useEffect, useState } from "react";
-import { Plus, X } from "lucide-react";
-import { Badge, EmptyState, PageHeader } from "@/components/Page";
-import { api } from "@/lib/api";
-import type { Category } from "@/lib/types";
 
-interface Rule {id:string;name:string;priority:number;is_active:boolean;match_field:string;match_operator:string;match_value:string;category_id?:string;subcategory_id?:string;transaction_type?:string;is_excluded_from_spending?:boolean;mark_as_recurring?:boolean;merchant_name_override?:string;}
-const fields=["description","merchant","account","account_instrument","source_category","source_transaction_type","amount","direction","cardholder_name","card_last_four"];
-const operators=["contains","equals","starts_with","regex","greater_than","less_than"];
-export default function RulesPage(){
- const [rules,setRules]=useState<Rule[]>([]);const [categories,setCategories]=useState<Category[]>([]);const [modal,setModal]=useState(false);const [error,setError]=useState("");
- async function load(){const [r,c]=await Promise.all([api<Rule[]>("/rules"),api<Category[]>("/categories")]);setRules(r);setCategories(c)}useEffect(()=>{load()},[]);
- async function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);const payload={name:f.get("name"),priority:Number(f.get("priority")),is_active:true,match_field:f.get("field"),match_operator:f.get("operator"),match_value:f.get("value"),category_id:f.get("category")||null,transaction_type:f.get("type")||null,is_excluded_from_spending:f.get("excluded")==="on"?true:null,mark_as_recurring:f.get("recurring")==="on"?true:null,merchant_name_override:f.get("merchant")||null};try{await api("/rules",{method:"POST",body:JSON.stringify(payload)});setModal(false);await load()}catch(err){setError(err instanceof Error?err.message:"Could not save")}}
- async function toggle(rule:Rule){await api(`/rules/${rule.id}`,{method:"PATCH",body:JSON.stringify({is_active:!rule.is_active})});await load()}
- return <><PageHeader eyebrow="Automation" title="Category rules" description="Rules run in priority order during normalization. Every applied change stays visible in import review." actions={<button className="button button-primary" onClick={()=>setModal(true)}><Plus size={16}/>New rule</button>}/>{!rules.length?<div className="card"><EmptyState title="No automation yet" body="Create a rule for recurring descriptions, merchants, account profiles, amounts, or provider categories." action={<button className="button button-primary" onClick={()=>setModal(true)}>Create rule</button>}/></div>:<div className="card table-card"><div className="table-scroll"><table className="data-table"><thead><tr><th>Priority</th><th>Rule</th><th>When</th><th>Actions</th><th>Status</th></tr></thead><tbody>{rules.map(r=><tr key={r.id}><td>{r.priority}</td><td><strong>{r.name}</strong></td><td><Badge tone="accent">{r.match_field.replaceAll("_"," ")}</Badge> {r.match_operator.replaceAll("_"," ")} <strong>{r.match_value}</strong></td><td>{r.category_id&&categories.find(c=>c.id===r.category_id)?.name}{r.transaction_type&&` · ${r.transaction_type.replaceAll("_"," ")}`}{r.is_excluded_from_spending&&" · exclude"}{r.mark_as_recurring&&" · recurring"}</td><td><button className="button" onClick={()=>toggle(r)}><Badge tone={r.is_active?"good":"neutral"}>{r.is_active?"enabled":"disabled"}</Badge></button></td></tr>)}</tbody></table></div></div>}
- {modal&&<div className="modal-backdrop"><div className="modal"><div className="modal-header"><h2>Create categorization rule</h2><button className="icon-button" onClick={()=>setModal(false)}><X/></button></div>{error&&<div className="notice notice-error">{error}</div>}<form onSubmit={submit}><div className="form-grid"><div className="field full"><label>Rule name</label><input className="input" name="name" required placeholder="Netflix subscription"/></div><div className="field"><label>Priority (lower runs first)</label><input className="input" name="priority" type="number" defaultValue="100"/></div><div className="field"><label>Match field</label><select className="select" name="field">{fields.map(x=><option key={x} value={x}>{x.replaceAll("_"," ")}</option>)}</select></div><div className="field"><label>Operator</label><select className="select" name="operator">{operators.map(x=><option key={x} value={x}>{x.replaceAll("_"," ")}</option>)}</select></div><div className="field"><label>Match value</label><input className="input" name="value" required placeholder="NETFLIX"/></div><div className="field"><label>Set category</label><select className="select" name="category"><option value="">No change</option>{categories.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div><div className="field"><label>Set type</label><select className="select" name="type"><option value="">No change</option>{["expense","income","transfer","credit_card_payment","refund","fee","adjustment","other"].map(x=><option key={x} value={x}>{x.replaceAll("_"," ")}</option>)}</select></div><div className="field full"><label>Merchant name override</label><input className="input" name="merchant"/></div><label><input type="checkbox" name="excluded"/> Exclude from spending</label><label><input type="checkbox" name="recurring"/> Mark recurring</label></div><div className="form-actions"><button type="button" className="button" onClick={()=>setModal(false)}>Cancel</button><button className="button button-primary">Create rule</button></div></form></div></div>}
- </>;
+import { useEffect, useState } from "react";
+import { Plus, Trash2 } from "lucide-react";
+import { Badge, EmptyState, PageHeader } from "@/components/Page";
+import { RuleForm } from "@/components/RuleForm";
+import { api } from "@/lib/api";
+import type { Category, Rule } from "@/lib/types";
+
+type RuleModal = { mode: "create" } | { mode: "edit"; rule: Rule };
+
+function display(value: string) {
+  return value.replaceAll("_", " ");
+}
+
+export default function RulesPage() {
+  const [rules, setRules] = useState<Rule[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [modal, setModal] = useState<RuleModal | null>(null);
+  const [error, setError] = useState("");
+  const [feedback, setFeedback] = useState("");
+  const [deletingRuleId, setDeletingRuleId] = useState<string | null>(null);
+
+  async function load() {
+    const [loadedRules, loadedCategories] = await Promise.all([
+      api<Rule[]>("/rules"),
+      api<Category[]>("/categories"),
+    ]);
+    setRules(loadedRules);
+    setCategories(loadedCategories);
+  }
+
+  useEffect(() => {
+    void load().catch((reason) => {
+      setError(reason instanceof Error ? reason.message : "Could not load rules");
+    });
+  }, []);
+
+  function openCreate() {
+    setError("");
+    setFeedback("");
+    setModal({ mode: "create" });
+  }
+
+  function openEdit(rule: Rule) {
+    setError("");
+    setFeedback("");
+    setModal({ mode: "edit", rule });
+  }
+
+  function savedRule(saved: Rule, mode: "create" | "edit") {
+    setRules((current) => {
+      const next = mode === "edit"
+        ? current.map((rule) => rule.id === saved.id ? saved : rule)
+        : [...current, saved];
+      return next.sort((left, right) => left.priority - right.priority || left.created_at.localeCompare(right.created_at));
+    });
+    setModal(null);
+    setFeedback(`Rule “${saved.name}” ${mode === "edit" ? "updated" : "created"}.`);
+  }
+
+  async function toggle(rule: Rule) {
+    setError("");
+    setFeedback("");
+    try {
+      const saved = await api<Rule>(`/rules/${rule.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ is_active: !rule.is_active }),
+      });
+      setRules((current) => current.map((candidate) => candidate.id === saved.id ? saved : candidate));
+      setFeedback(`Rule “${saved.name}” ${saved.is_active ? "enabled" : "disabled"}.`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not update rule status");
+    }
+  }
+
+  async function deleteRule(rule: Rule) {
+    if (!window.confirm(`Permanently delete rule “${rule.name}”? It will no longer apply to future imports.`)) return;
+    setDeletingRuleId(rule.id);
+    setError("");
+    setFeedback("");
+    try {
+      await api(`/rules/${rule.id}`, { method: "DELETE" });
+      setRules((current) => current.filter((candidate) => candidate.id !== rule.id));
+      setFeedback(`Rule “${rule.name}” deleted.`);
+      try {
+        await load();
+      } catch (reason) {
+        const detail = reason instanceof Error ? reason.message : "Could not refresh rules";
+        setError(`Rule was deleted, but the list could not be refreshed: ${detail}`);
+      }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not delete rule");
+    } finally {
+      setDeletingRuleId(null);
+    }
+  }
+
+  function configuredActions(rule: Rule) {
+    const actions: string[] = [];
+    const category = categories.find((candidate) => candidate.id === rule.category_id);
+    const subcategory = category?.subcategories.find((candidate) => candidate.id === rule.subcategory_id);
+    if (category) actions.push(subcategory ? `${category.name} / ${subcategory.name}` : category.name);
+    if (rule.transaction_type) actions.push(`Type: ${display(rule.transaction_type)}`);
+    if (rule.is_excluded_from_spending !== null) actions.push(rule.is_excluded_from_spending ? "Exclude from spending" : "Include in spending");
+    if (rule.mark_as_recurring !== null) actions.push(rule.mark_as_recurring ? "Mark recurring" : "Mark not recurring");
+    if (rule.merchant_name_override) actions.push(`Merchant: ${rule.merchant_name_override}`);
+    if (rule.note) actions.push(`Add note: ${rule.note}`);
+    return actions.length ? actions.join(" · ") : "No changes configured";
+  }
+
+  return <>
+    <PageHeader
+      eyebrow="Automation"
+      title="Category rules"
+      description="Rules run in priority order during normalization. Every applied change stays visible in import review."
+      actions={<button className="button button-primary" onClick={openCreate}><Plus size={16}/>New rule</button>}
+    />
+    {error && <div className="notice notice-error">{error}</div>}
+    {feedback && <div className="notice notice-good">{feedback}</div>}
+    {!rules.length ? <div className="card">
+      <EmptyState
+        title="No automation yet"
+        body="Create a rule for recurring descriptions, merchants, account profiles, amounts, or provider categories."
+        action={<button className="button button-primary" onClick={openCreate}>Create rule</button>}
+      />
+    </div> : <div className="card table-card">
+      <div className="table-scroll">
+        <table className="data-table">
+          <thead><tr><th>Priority</th><th>Rule</th><th>When</th><th>Actions</th><th>Status</th><th>Manage</th></tr></thead>
+          <tbody>{rules.map((rule) => {
+            const isDeleting = deletingRuleId === rule.id;
+            return <tr key={rule.id}>
+              <td>{rule.priority}</td>
+              <td><strong>{rule.name}</strong></td>
+              <td><Badge tone="accent">{display(rule.match_field)}</Badge> {display(rule.match_operator)} <strong>{rule.match_value}</strong></td>
+              <td>{configuredActions(rule)}</td>
+              <td><button className="button" onClick={() => toggle(rule)} disabled={isDeleting}><Badge tone={rule.is_active ? "good" : "neutral"}>{rule.is_active ? "enabled" : "disabled"}</Badge></button></td>
+              <td><div className="page-actions">
+                <button className="button" onClick={() => openEdit(rule)} disabled={isDeleting}>Edit</button>
+                <button className="button button-danger" onClick={() => deleteRule(rule)} disabled={deletingRuleId !== null}>
+                  <Trash2 size={15}/>{isDeleting ? "Deleting…" : "Delete"}
+                </button>
+              </div></td>
+            </tr>;
+          })}</tbody>
+        </table>
+      </div>
+    </div>}
+    {modal && <RuleForm
+      categories={categories}
+      mode={modal.mode}
+      rule={modal.mode === "edit" ? modal.rule : undefined}
+      onClose={() => setModal(null)}
+      onSuccess={(saved) => savedRule(saved, modal.mode)}
+    />}
+  </>;
 }

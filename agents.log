@@ -1,0 +1,99 @@
+# Agents Log
+
+## Session: 2026-07-19
+Goal: (1) Import review "set rule" button opens a popup to define the rule (criteria + category + subcategory). (2) Category rules page supports editing rules.
+PRD: TBD — docs/prds/rule-popup-and-editing.md
+
+### Spawned: 84462d6e
+Type: research
+Prompt: Investigate import-review set-rule flow, category rules page CRUD, categories/subcategories model; gap analysis for rule popup + rule editing.
+Reasoning: xhigh
+Sandbox: read-only
+
+### Complete: 84462d6e
+Findings (research):
+- Button is "Rule from edit" in imports/[id]/review/page.tsx; uses window.confirm + hard-coded description/contains rule from first >=4-char token of description_clean.
+- Backend already has full rule CRUD: POST/GET/PATCH/DELETE /rules + POST /rules/test; RulePatch supports full edit. No category/subcategory ownership validation.
+- Rules match description_original (not description_clean) — prefill gotcha.
+- Rules page (/rules) is create-only + active toggle; no edit, no subcategory selection, page-local Rule type.
+- Categories: GET /categories returns nested subcategories; review page filters is_active, rules page doesn't.
+- Reapplying rules to existing drafts is unsafe (re-normalize deletes drafts/edits) — out of scope.
+
+### Synthesis
+Frontend-heavy work: shared RuleForm modal (create+edit modes, dependent subcategory select), wire into review page (replace confirm) and rules page (edit button). Small backend addition: validate category/subcategory ownership+consistency on create/patch.
+PRD: docs/prds/rule-popup-and-editing.md
+
+### Spawned: e1911b16
+Type: implementation
+Prompt: Implement docs/prds/rule-popup-and-editing.md (shared RuleForm modal, review-page popup, rules-page editing, backend validation).
+Reasoning: xhigh
+Sandbox: workspace-write
+
+### Complete: e1911b16
+Implementation done. New frontend/src/components/RuleForm.tsx (create+edit, dependent subcategories, null clearing); review page prefills from description_original with success feedback; rules page full edit + subcategory/action display; backend ownership/consistency validation on POST+PATCH /rules; Rule type moved to lib/types.ts. Verified: npm lint, npm build, import app.main, 30 backend tests passed.
+
+### Spawned: 55b9a74d
+Type: review (correctness vs PRD, React state bugs)
+Sandbox: read-only
+
+### Spawned: 2cbd8e61
+Type: review (security, data integrity of rules validation)
+Sandbox: read-only
+
+### Complete: 55b9a74d (correctness review)
+- P2: editing a rule with inactive category/subcategory prefills empty and PATCH nulls them (active-only options).
+- P2: close/cancel enabled during save; stale onSuccess can clear a newly opened modal.
+
+### Complete: 2cbd8e61 (security review)
+- High (pre-existing): regex rules run through re.search without timeout -> ReDoS potential. NOT introduced by this change; noted for future.
+- Medium: same inactive-category clearing bug.
+- Medium: empty match_value -> catch-all rule (contains/starts_with match everything).
+- Low (pre-existing): rule schemas lack length limits; PATCH allows null for required columns -> 500s. Noted for future.
+- Ownership/consistency validation confirmed correct; no new draft/transaction mutation paths.
+
+### Synthesis
+Fix now: inactive-category prefill clearing, disable close during save, non-blank match_value (frontend + schema). Defer (pre-existing): regex timeout, schema length limits.
+
+### Spawned: 7d4f6fc2
+Type: fix (review findings 1-3)
+Sandbox: workspace-write
+
+### Complete: 7d4f6fc2 (fixes)
+All three findings fixed: inactive assignments preserved in edit mode (labelled "(inactive)"), close/cancel disabled during save, blank match_value rejected in form + schemas (RuleIn/RulePatch). Re-verified: npm lint, npm build, 30 backend tests passed.
+
+### Session done
+Feature complete, uncommitted. Deferred pre-existing issues: regex ReDoS (no re timeout in services/rules.py), rule schema length limits / PATCH null-for-required columns.
+
+## Session: 2026-07-19 (part 2)
+Goal: Rule delete UI; fix deferred issues (regex ReDoS timeout, rule schema length limits + PATCH null-for-required).
+
+### Spawned: f4cc4583
+Type: implementation
+Prompt: Delete action on /rules; regex matching via 'regex' pkg with timeout + create/patch pattern validation; RuleIn/RulePatch max_length + reject explicit nulls for required fields.
+Reasoning: xhigh
+Sandbox: workspace-write
+
+### Complete: f4cc4583
+Delete UI on /rules (confirm + refresh + feedback); regex matching via 'regex' pkg pinned 2026.7.10 with 100ms timeout (timeout/invalid = non-match), safe fallback disables regex when pkg absent; POST/PATCH regex compile validation -> 422; schema max_length + explicit-null rejection for required PATCH fields; 16 new tests. Sandbox couldn't install regex; orchestrator installed it in .venv (python -m pip; venv pip shebang is stale, points at old fin-tracker-codex-sol path) — 46 tests pass with real timeout path.
+
+### Spawned: 6dd18c53 — killed (wrong cwd backend/, no map)
+
+### Spawned: 4c0d4775
+Type: review (regex timeout, validation, schema hardening, delete UI, tests)
+Sandbox: read-only
+
+### Complete: 4c0d4775 (review)
+- High: DELETE /rules 500s when drafts reference rule (applied_rule_id FK, no ON DELETE).
+- High: RuleOut inherits input constraints -> legacy blank rows break GET /rules response validation.
+- Medium: priority unbounded -> int4 overflow 500; delete success shown despite failed refresh (stale row); toggle/edit clickable during delete (race); tests helper-only + fake regex module, no route-level coverage.
+- Verified: 16 tests pass; real regex 2026.7.10 times out ~101ms, invalid patterns non-match.
+
+### Spawned: da4e081f
+Type: fix (all six findings incl. FK-safe delete, tolerant RuleOut, priority bounds, delete UX, route-level tests)
+Sandbox: workspace-write
+
+### Complete: da4e081f (fixes)
+All six findings fixed: delete clears draft applied_rule_id refs first; RuleOut decoupled from input validators; priority bounded 0..2147483647 (schema + HTML); delete removes row locally + surfaces refresh failure; per-row actions disabled while deleting; route-level tests + real-regex timeout test added. Orchestrator re-verified: 54 backend tests pass. Frontend lint+build pass.
+
+### Session done (part 2)
+Delete UI + regex timeout + schema hardening complete, uncommitted.

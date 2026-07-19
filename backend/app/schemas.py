@@ -244,39 +244,81 @@ class CategoryOut(ORMModel):
 
 
 class RuleIn(BaseModel):
-    name: str
-    priority: int = 100
+    name: str = Field(min_length=1, max_length=160)
+    priority: int = Field(default=100, ge=0, le=2_147_483_647)
     is_active: bool = True
     match_field: MatchField
     match_operator: MatchOperator
-    match_value: str
+    match_value: str = Field(min_length=1, max_length=500)
     category_id: UUID | None = None
     subcategory_id: UUID | None = None
     transaction_type: TransactionType | None = None
     is_excluded_from_spending: bool | None = None
     mark_as_recurring: bool | None = None
-    merchant_name_override: str | None = None
+    merchant_name_override: str | None = Field(default=None, max_length=255)
     note: str | None = None
+
+    @model_validator(mode="after")
+    def validate_match_value(self):
+        if not self.match_value.strip():
+            raise ValueError("Match value cannot be blank")
+        return self
 
 
 class RulePatch(BaseModel):
-    name: str | None = None
-    priority: int | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=160)
+    priority: int | None = Field(default=None, ge=0, le=2_147_483_647)
     is_active: bool | None = None
     match_field: MatchField | None = None
     match_operator: MatchOperator | None = None
-    match_value: str | None = None
+    match_value: str | None = Field(default=None, min_length=1, max_length=500)
     category_id: UUID | None = None
     subcategory_id: UUID | None = None
     transaction_type: TransactionType | None = None
     is_excluded_from_spending: bool | None = None
     mark_as_recurring: bool | None = None
-    merchant_name_override: str | None = None
+    merchant_name_override: str | None = Field(default=None, max_length=255)
     note: str | None = None
 
+    @model_validator(mode="after")
+    def validate_required_fields_and_match_value(self):
+        required_fields = {
+            "name",
+            "priority",
+            "is_active",
+            "match_field",
+            "match_operator",
+            "match_value",
+        }
+        null_fields = sorted(
+            field
+            for field in required_fields.intersection(self.model_fields_set)
+            if getattr(self, field) is None
+        )
+        if null_fields:
+            raise ValueError(
+                f"Required rule fields cannot be null: {', '.join(null_fields)}"
+            )
+        if self.match_value is not None and not self.match_value.strip():
+            raise ValueError("Match value cannot be blank")
+        return self
 
-class RuleOut(RuleIn, ORMModel):
+
+class RuleOut(ORMModel):
     id: UUID
+    name: str
+    priority: int
+    is_active: bool
+    match_field: MatchField
+    match_operator: MatchOperator
+    match_value: str
+    category_id: UUID | None
+    subcategory_id: UUID | None
+    transaction_type: TransactionType | None
+    is_excluded_from_spending: bool | None
+    mark_as_recurring: bool | None
+    merchant_name_override: str | None
+    note: str | None
     created_at: datetime
     updated_at: datetime
 

@@ -46,6 +46,28 @@ export interface Instrument {
 export interface Subcategory { id: string; category_id: string; name: string; is_active: boolean; }
 export interface Category { id: string; name: string; description?: string; is_active: boolean; is_system: boolean; subcategories: Subcategory[]; }
 
+export type RuleMatchField = "description" | "merchant" | "account" | "account_instrument" | "source_category" | "source_transaction_type" | "amount" | "direction" | "cardholder_name" | "card_last_four";
+export type RuleMatchOperator = "contains" | "equals" | "starts_with" | "regex" | "greater_than" | "less_than";
+
+export interface Rule {
+  id: string;
+  name: string;
+  priority: number;
+  is_active: boolean;
+  match_field: RuleMatchField;
+  match_operator: RuleMatchOperator;
+  match_value: string;
+  category_id: string | null;
+  subcategory_id: string | null;
+  transaction_type: string | null;
+  is_excluded_from_spending: boolean | null;
+  mark_as_recurring: boolean | null;
+  merchant_name_override: string | null;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ImportRecord {
   id: string; account_id: string; original_filename: string; institution_id?: string; institution_name?: string; account_type?: AccountType; status: string;
   row_count: number; duplicate_row_count: number; imported_row_count: number; is_duplicate_file: boolean;
@@ -55,7 +77,7 @@ export interface ImportRecord {
 }
 
 export interface DraftTransaction {
-  id: string; transaction_date: string; posted_date?: string; description_clean: string; merchant_name?: string;
+  id: string; transaction_date: string; posted_date?: string; description_original: string; description_clean: string; merchant_name?: string;
   amount: string; direction: string; transaction_type: string; source_transaction_type?: string; category_id?: string; subcategory_id?: string;
   account_instrument_id?: string; card_last_four?: string; cardholder_name?: string; is_excluded_from_spending: boolean;
   is_recurring: boolean; recurring_candidate: boolean; duplicate_status: string; review_status: string; rule_applied: boolean; notes?: string;

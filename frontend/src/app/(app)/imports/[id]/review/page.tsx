@@ -4,8 +4,9 @@ import { Trash2 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Badge, EmptyState, PageHeader } from "@/components/Page";
+import { RuleForm } from "@/components/RuleForm";
 import { api, money, shortDate } from "@/lib/api";
-import type { Category, DraftTransaction, ImportRecord, Instrument } from "@/lib/types";
+import type { Category, DraftTransaction, ImportRecord, Instrument, Rule } from "@/lib/types";
 
 const types = ["expense", "income", "transfer", "credit_card_payment", "refund", "fee", "adjustment", "other"];
 
@@ -23,6 +24,8 @@ export default function ReviewPage() {
   const [instruments, setInstruments] = useState<Instrument[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [error, setError] = useState("");
+  const [feedback, setFeedback] = useState("");
+  const [ruleDefaults, setRuleDefaults] = useState<Partial<Rule> | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [filter, setFilter] = useState("");
@@ -63,31 +66,21 @@ export default function ReviewPage() {
     }
   }
 
-  async function createRule(row: DraftTransaction) {
-    const token = row.description_clean.split(/\s+/).find((part) => part.length >= 4) || row.description_clean;
-    if (!window.confirm(`Create a rule that categorizes descriptions containing “${token}”?`)) return;
-    try {
-      await api("/rules", {
-        method: "POST",
-        body: JSON.stringify({
-          name: `Categorize ${token}`,
-          priority: 100,
-          is_active: true,
-          match_field: "description",
-          match_operator: "contains",
-          match_value: token,
-          category_id: row.category_id || null,
-          subcategory_id: row.subcategory_id || null,
-          transaction_type: null,
-          is_excluded_from_spending: null,
-          mark_as_recurring: null,
-          merchant_name_override: row.merchant_name || null,
-          note: null,
-        }),
-      });
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not create rule");
-    }
+  function createRule(row: DraftTransaction) {
+    const token = row.description_original.split(/\s+/).find((part) => part.length >= 4) || row.description_original;
+    setError("");
+    setFeedback("");
+    setRuleDefaults({
+      name: `Categorize ${token}`,
+      priority: 100,
+      is_active: true,
+      match_field: "description",
+      match_operator: "contains",
+      match_value: token,
+      category_id: row.category_id || null,
+      subcategory_id: row.subcategory_id || null,
+      merchant_name_override: row.merchant_name || null,
+    });
   }
 
   async function confirm() {
@@ -165,6 +158,7 @@ export default function ReviewPage() {
       </>}
     />
     {error && <div className="notice notice-error">{error}</div>}
+    {feedback && <div className="notice notice-good">{feedback}</div>}
     <div className="toolbar">
       <Badge tone="good">{importLabel} will import</Badge>
       <Badge tone={counts.skipped ? "warn" : "good"}>{counts.skipped} skipped</Badge>
@@ -233,5 +227,15 @@ export default function ReviewPage() {
         </table>
       </div>}
     </div>
+    {ruleDefaults && <RuleForm
+      categories={categories}
+      mode="create"
+      initialValues={ruleDefaults}
+      onClose={() => setRuleDefaults(null)}
+      onSuccess={(rule) => {
+        setRuleDefaults(null);
+        setFeedback(`Rule “${rule.name}” created. It will apply to future normalizations.`);
+      }}
+    />}
   </>;
 }
