@@ -4,6 +4,7 @@ import { Download, Search, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Badge, EmptyState, PageHeader } from "@/components/Page";
 import { API_BASE, api, money, shortDate } from "@/lib/api";
+import { soleActiveSubcategoryId } from "@/lib/categories";
 import type { Account, Category, Instrument, Transaction } from "@/lib/types";
 
 const transactionTypes = ["expense", "income", "transfer", "credit_card_payment", "refund", "fee", "adjustment", "other"];
@@ -170,7 +171,14 @@ export default function TransactionsPage() {
               <td>{shortDate(row.transaction_date)}</td>
               <td><strong>{row.merchant_name || row.description_clean}</strong>{row.merchant_name && <div className="muted">{row.description_clean}</div>}</td>
               <td>{account?.name || "—"}{row.card_last_four && <div className="muted">Card {row.card_last_four}</div>}</td>
-              <td><select className="select" value={row.category_id || ""} onChange={(event) => change(row, { category_id: event.target.value || null, subcategory_id: null })}><option value="">Uncategorized</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></td>
+              <td><select className="select" value={row.category_id || ""} onChange={(event) => {
+                const categoryId = event.target.value || null;
+                const selectedCategory = categories.find((category) => category.id === categoryId);
+                change(row, {
+                  category_id: categoryId,
+                  subcategory_id: soleActiveSubcategoryId(selectedCategory),
+                });
+              }}><option value="">Uncategorized</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></td>
               <td><select className="select" value={row.transaction_type} onChange={(event) => change(row, { transaction_type: event.target.value })}>{transactionTypes.map((type) => <option key={type} value={type}>{type.replaceAll("_", " ")}</option>)}</select>{row.source_transaction_type && <small className="muted">Source: {row.source_transaction_type}</small>}</td>
               <td className={`amount ${row.direction}`}>{row.direction === "inflow" ? "+" : "−"}{money(row.amount)}</td>
               <td><div className="flag-stack">{row.is_excluded_from_spending && <Badge>excluded</Badge>}{row.is_recurring && <Badge tone="good">recurring</Badge>}{!row.category_id && <Badge tone="warn">review</Badge>}</div></td>

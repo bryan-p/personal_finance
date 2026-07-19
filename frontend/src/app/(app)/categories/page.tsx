@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Plus, Trash2, X } from "lucide-react";
 import { Badge, PageHeader } from "@/components/Page";
 import { api } from "@/lib/api";
+import { soleActiveSubcategoryId } from "@/lib/categories";
 import type { Category, Institution } from "@/lib/types";
 
 interface ProviderCategoryMap {
@@ -36,6 +37,7 @@ export default function CategoriesPage() {
   const [typeMappings, setTypeMappings] = useState<ProviderTypeMap[]>([]);
   const [modal, setModal] = useState<Modal>(null);
   const [parent, setParent] = useState("");
+  const [providerSubcategory, setProviderSubcategory] = useState("");
   const [error, setError] = useState("");
 
   async function load() {
@@ -56,6 +58,7 @@ export default function CategoriesPage() {
   function openModal(next: Exclude<Modal, null>, categoryId = "") {
     setError("");
     setParent(categoryId);
+    setProviderSubcategory("");
     setModal(next);
   }
 
@@ -172,10 +175,15 @@ export default function CategoriesPage() {
         {modal === "provider category" && <div className="form-grid">
           <InstitutionField institutions={institutions}/>
           <div className="field"><label>Institution category</label><input className="input" name="source" required placeholder="Shopping"/></div>
-          <div className="field"><label>App category</label><select className="select" name="category" value={parent} onChange={(event) => setParent(event.target.value)} required>
+          <div className="field"><label>App category</label><select className="select" name="category" value={parent} onChange={(event) => {
+            const categoryId = event.target.value;
+            const category = categories.find((candidate) => candidate.id === categoryId);
+            setParent(categoryId);
+            setProviderSubcategory(soleActiveSubcategoryId(category) || "");
+          }} required>
             <option value="">Choose category</option>{categories.filter((category) => category.is_active).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
           </select></div>
-          <div className="field"><label>App subcategory</label><select className="select" name="subcategory">
+          <div className="field"><label>App subcategory</label><select className="select" name="subcategory" value={providerSubcategory} onChange={(event) => setProviderSubcategory(event.target.value)}>
             <option value="">No subcategory</option>{categories.find((category) => category.id === parent)?.subcategories.filter((subcategory) => subcategory.is_active).map((subcategory) => <option key={subcategory.id} value={subcategory.id}>{subcategory.name}</option>)}
           </select></div>
         </div>}

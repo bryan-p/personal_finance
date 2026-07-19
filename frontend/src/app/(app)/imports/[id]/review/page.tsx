@@ -6,6 +6,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Badge, EmptyState, PageHeader } from "@/components/Page";
 import { RuleForm } from "@/components/RuleForm";
 import { api, money, shortDate } from "@/lib/api";
+import { soleActiveSubcategoryId } from "@/lib/categories";
 import type { Category, DraftTransaction, ImportRecord, Instrument, Rule, Subcategory } from "@/lib/types";
 
 const types = ["expense", "income", "transfer", "credit_card_payment", "refund", "fee", "adjustment", "other"];
@@ -302,7 +303,12 @@ export default function ReviewPage() {
                     openTaxonomyModal({ kind: "category", rowId: row.id });
                     return;
                   }
-                  change(row, { category_id: event.target.value || null, subcategory_id: null });
+                  const categoryId = event.target.value || null;
+                  const selectedCategory = categories.find((candidate) => candidate.id === categoryId);
+                  change(row, {
+                    category_id: categoryId,
+                    subcategory_id: soleActiveSubcategoryId(selectedCategory),
+                  });
                 }}>
                   <option value="">Uncategorized</option>
                   {categories.filter((candidate) => candidate.is_active).map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}

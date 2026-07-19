@@ -150,3 +150,20 @@ Duplicate rows (duplicate_status="duplicate" and not importing) get themed grey 
 
 ### Session done (part 4)
 Duplicate de-emphasis complete, uncommitted.
+
+## Session: 2026-07-19 (part 5)
+Goal: Auto-select subcategory when selected category has exactly one active subcategory — import review, transactions page, RuleForm, provider-mapping form.
+
+### Complete: d7913a97 (research, part 4b)
+Disable-category behavior traced: soft is_active flip; rules/mappings still assign inactive categories; dashboards still count; no re-enable UI; no cascade to subcategories. Reported to user.
+
+### Spawned: b6306afa
+Type: implementation
+Prompt: soleActiveSubcategoryId helper + auto-select on category change across 4 surfaces; verify/extend transactions PATCH for subcategory_id consistency.
+Sandbox: workspace-write
+
+### Complete: b6306afa
+Sole-active-subcategory auto-select shipped via shared helper frontend/src/lib/categories.ts across review page, transactions page, RuleForm (user-driven changes only), provider-mapping form (now controlled inputs). Transactions PATCH already accepted subcategory_id — now always sent explicitly, preventing stale cross-category subcategories. Orchestrator reviewed diff directly (empty-category paths correct). Verified: lint, build, 58 backend tests.
+
+### Session done (part 5)
+Auto-select complete, uncommitted.

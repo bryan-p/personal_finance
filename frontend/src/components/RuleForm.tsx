@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import { X } from "lucide-react";
 import { api } from "@/lib/api";
+import { soleActiveSubcategoryId } from "@/lib/categories";
 import type { Category, Rule, RuleMatchField, RuleMatchOperator } from "@/lib/types";
 
 const matchFields: RuleMatchField[] = [
@@ -120,6 +121,15 @@ export function RuleForm({ categories, mode, rule, initialValues, onClose, onSuc
     setValues((current) => ({ ...current, [key]: value }));
   }
 
+  function changeCategory(categoryId: string) {
+    const category = categories.find((candidate) => candidate.id === categoryId);
+    setValues((current) => ({
+      ...current,
+      category_id: categoryId,
+      subcategory_id: soleActiveSubcategoryId(category) || "",
+    }));
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (saving) return;
@@ -214,7 +224,7 @@ export function RuleForm({ categories, mode, rule, initialValues, onClose, onSuc
           </div>
           <div className="field">
             <label>Set category</label>
-            <select className="select" value={values.category_id} onChange={(event) => setValues((current) => ({ ...current, category_id: event.target.value, subcategory_id: "" }))}>
+            <select className="select" value={values.category_id} onChange={(event) => changeCategory(event.target.value)}>
               <option value="">No change</option>
               {categoryOptions.map((category) => <option key={category.id} value={category.id} disabled={!category.is_active}>
                 {category.name}{category.is_active ? "" : " (inactive)"}
