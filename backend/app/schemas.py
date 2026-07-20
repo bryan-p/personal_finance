@@ -345,6 +345,10 @@ class BulkDraftPatch(BaseModel):
     changes: DraftPatch
 
 
+class ApplyRuleToDraftsIn(BaseModel):
+    rule_id: UUID
+
+
 class TransactionPatch(DraftPatch):
     pass
 

@@ -1,6 +1,8 @@
 import re
 from decimal import Decimal, InvalidOperation
 
+from app.services.transactions import sync_type_exclusion
+
 try:
     import regex
 except ImportError:  # pragma: no cover - production installs it from requirements.txt
@@ -84,26 +86,34 @@ def rule_matches(transaction, rule, db=None) -> bool:
     return False
 
 
+def apply_rule(transaction, rule) -> None:
+    changed_fields = set()
+    if rule.category_id is not None:
+        if rule.category_id != transaction.category_id and rule.subcategory_id is None:
+            transaction.subcategory_id = None
+        transaction.category_id = rule.category_id
+    if rule.subcategory_id is not None:
+        transaction.subcategory_id = rule.subcategory_id
+    if rule.transaction_type is not None:
+        transaction.transaction_type = rule.transaction_type
+        changed_fields.add("transaction_type")
+    if rule.is_excluded_from_spending is not None:
+        transaction.is_excluded_from_spending = rule.is_excluded_from_spending
+        changed_fields.add("is_excluded_from_spending")
+    sync_type_exclusion(transaction, changed_fields)
+    if rule.mark_as_recurring is not None:
+        transaction.is_recurring = rule.mark_as_recurring
+    if rule.merchant_name_override:
+        transaction.merchant_name = rule.merchant_name_override
+    if rule.note:
+        transaction.notes = "\n".join(filter(None, [transaction.notes, rule.note]))
+    transaction.applied_rule_id = rule.id
+
+
 def apply_first_matching_rule(transaction, rules, db=None):
     for rule in rules:
         if not rule_matches(transaction, rule, db):
             continue
-        if rule.category_id is not None:
-            if rule.category_id != transaction.category_id and rule.subcategory_id is None:
-                transaction.subcategory_id = None
-            transaction.category_id = rule.category_id
-        if rule.subcategory_id is not None:
-            transaction.subcategory_id = rule.subcategory_id
-        if rule.transaction_type is not None:
-            transaction.transaction_type = rule.transaction_type
-        if rule.is_excluded_from_spending is not None:
-            transaction.is_excluded_from_spending = rule.is_excluded_from_spending
-        if rule.mark_as_recurring is not None:
-            transaction.is_recurring = rule.mark_as_recurring
-        if rule.merchant_name_override:
-            transaction.merchant_name = rule.merchant_name_override
-        if rule.note:
-            transaction.notes = "\n".join(filter(None, [transaction.notes, rule.note]))
-        transaction.applied_rule_id = rule.id
+        apply_rule(transaction, rule)
         return rule
     return None

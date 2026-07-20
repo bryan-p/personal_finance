@@ -17,10 +17,12 @@ from app.models import (
     ImportStatus,
     Institution,
     ReviewStatus,
+    Rule,
     Transaction,
 )
 from app.schemas import (
     APIMessage,
+    ApplyRuleToDraftsIn,
     BulkDeleteIn,
     BulkDraftPatch,
     DeleteResult,
@@ -30,7 +32,11 @@ from app.schemas import (
     MappingOut,
     MappingPatch,
 )
-from app.services.imports.normalization import normalize_import
+from app.services.imports.normalization import (
+    normalize_import,
+    recalculate_recurring_candidate,
+    transaction_history_for,
+)
 from app.services.imports.parsing import (
     detect_mapping,
     detect_provider,
@@ -40,6 +46,7 @@ from app.services.imports.parsing import (
     resolve_header_name,
 )
 from app.services.institutions import normalize_institution_name
+from app.services.rules import apply_rule, rule_matches
 from app.services.transactions import sync_type_exclusion
 
 
@@ -318,6 +325,48 @@ def review_import(
         query = query.where(DraftTransaction.duplicate_status == duplicate_status)
     rows = db.scalars(query.order_by(DraftTransaction.row_index)).all()
     return [draft_dict(row) for row in rows]
+
+
+@router.post("/imports/{import_id}/draft-transactions/apply-rule")
+def apply_rule_to_drafts(
+    import_id: UUID,
+    payload: ApplyRuleToDraftsIn,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    reviewable_import(db, import_id, user.id)
+    rule = owned_or_404(db, Rule, payload.rule_id, user.id)
+    if not rule.is_active:
+        raise HTTPException(status_code=409, detail="Inactive rules cannot be applied")
+
+    rows = db.scalars(
+        select(DraftTransaction).where(
+            DraftTransaction.user_id == user.id,
+            DraftTransaction.import_file_id == import_id,
+        ).order_by(DraftTransaction.row_index)
+    ).all()
+    transaction_history = transaction_history_for(db, user.id)
+    matched = 0
+    skipped_reviewed = 0
+    updated = []
+    for row in rows:
+        if not rule_matches(row, rule, db):
+            continue
+        matched += 1
+        if row.review_status != ReviewStatus.pending:
+            skipped_reviewed += 1
+            continue
+        apply_rule(row, rule)
+        recalculate_recurring_candidate(row, transaction_history)
+        updated.append(row)
+
+    db.commit()
+    return {
+        "matched": matched,
+        "updated": len(updated),
+        "skipped_reviewed": skipped_reviewed,
+        "drafts": [draft_dict(row) for row in updated],
+    }
 
 
 @router.patch("/imports/{import_id}/draft-transactions/{draft_transaction_id}")

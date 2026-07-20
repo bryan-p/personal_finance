@@ -17,6 +17,13 @@ type TaxonomyModal =
   | { kind: "category"; rowId: string }
   | { kind: "subcategory"; rowId: string; categoryId: string };
 
+interface ApplyRuleResult {
+  matched: number;
+  updated: number;
+  skipped_reviewed: number;
+  drafts: DraftTransaction[];
+}
+
 function willImport(row: DraftTransaction) {
   return row.review_status !== "skipped"
     && (row.duplicate_status !== "duplicate" || row.review_status === "approved");
@@ -100,6 +107,27 @@ export default function ReviewPage() {
       subcategory_id: row.subcategory_id || null,
       merchant_name_override: row.merchant_name || null,
     });
+  }
+
+  async function applyCreatedRule(rule: Rule) {
+    setRuleDefaults(null);
+    setError("");
+    if (!rule.is_active) {
+      setFeedback("Rule created (inactive — not applied).");
+      return;
+    }
+    try {
+      const result = await api<ApplyRuleResult>(`/imports/${id}/draft-transactions/apply-rule`, {
+        method: "POST",
+        body: JSON.stringify({ rule_id: rule.id }),
+      });
+      const updatedById = new Map(result.drafts.map((draft) => [draft.id, draft]));
+      setRows((current) => current.map((row) => updatedById.get(row.id) || row));
+      setFeedback(`Rule created — applied to ${result.updated} other transaction${result.updated === 1 ? "" : "s"} on this import.`);
+    } catch (reason) {
+      setFeedback(`Rule “${rule.name}” created. It will apply to future normalizations.`);
+      setError(reason instanceof Error ? `Rule was created, but could not be applied to this import: ${reason.message}` : "Rule was created, but could not be applied to this import");
+    }
   }
 
   function openTaxonomyModal(modal: TaxonomyModal) {
@@ -374,10 +402,7 @@ export default function ReviewPage() {
       mode="create"
       initialValues={ruleDefaults}
       onClose={() => setRuleDefaults(null)}
-      onSuccess={(rule) => {
-        setRuleDefaults(null);
-        setFeedback(`Rule “${rule.name}” created. It will apply to future normalizations.`);
-      }}
+      onSuccess={(rule) => { void applyCreatedRule(rule); }}
     />}
   </>;
 }

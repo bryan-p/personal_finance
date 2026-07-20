@@ -181,3 +181,33 @@ impliedTransactionType helper (seeded category is 'Credit Card Payments', plural
 
 ### Session done (part 6)
 Credit-card-payment type implication complete, uncommitted.
+
+## Session: 2026-07-19 (part 7)
+Goal: Auto-apply newly created rule (from review page) to matching pending drafts of the current import.
+
+### Spawned: 61dd08a9
+Type: implementation
+Prompt: New POST /imports/{id}/draft-transactions/apply-rule endpoint reusing rule mutation logic; only review_status=pending rows; frontend applies after modal create, merges rows, shows count. /rules page unchanged.
+Sandbox: workspace-write
+
+### Complete: 61dd08a9
+Auto-apply implemented: POST /imports/{id}/draft-transactions/apply-rule ({rule_id} -> {matched, updated, skipped_reviewed, drafts}); shared rule-mutation extraction used by normalization + endpoint; pending-only; review page merges drafts + shows count; 4 new route tests, 62 total pass.
+
+### Spawned: 3b021b71 — killed (wrong cwd backend/, no map)
+
+### Spawned: 59218fe6
+Type: review (refactor safety of shared rule mutations, endpoint gating, frontend merge)
+Sandbox: read-only
+
+### Complete: 59218fe6 (review)
+Refactor clean — no semantic drift; source row skipped; merge + /rules callback fine. Findings: P2 inactive rule auto-apply -> 409 + misleading msg; P3 recurring_candidate stale after applied mutations; missing tests for non-review_pending gate.
+
+### Spawned: 4b95d4a5
+Type: fix (skip auto-apply for inactive rules; recompute recurring_candidate; add gate tests)
+Sandbox: workspace-write
+
+### Complete: 4b95d4a5 (fixes)
+Inactive rules skip auto-apply with clear message; recurring_candidate recomputed via shared helper after apply-rule mutations; tests for non-review_pending gate + stale candidate added. Orchestrator re-verified: 64 backend tests, build pass.
+
+### Session done (part 7)
+Auto-apply rules on import review complete, uncommitted.

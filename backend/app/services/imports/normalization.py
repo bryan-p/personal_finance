@@ -71,6 +71,23 @@ def recurring_candidate_for(description: str, merchant: str | None, amount: Deci
     return len(matches) >= 2
 
 
+def transaction_history_for(db: Session, user_id):
+    return db.scalars(select(Transaction).where(Transaction.user_id == user_id)).all()
+
+
+def recalculate_recurring_candidate(draft: DraftTransaction, history) -> None:
+    draft.recurring_candidate = (
+        draft.transaction_type == TransactionType.expense
+        and not draft.is_excluded_from_spending
+        and recurring_candidate_for(
+            draft.description_clean,
+            draft.merchant_name,
+            draft.amount,
+            history,
+        )
+    )
+
+
 def make_dedupe_key(user_id, account_id, instrument_id, posted, transacted, amount, direction, description, provider_id=None):
     if provider_id:
         raw = f"{user_id}|{account_id}|provider|{provider_id}"
@@ -139,7 +156,7 @@ def normalize_import(db: Session, import_file: ImportFile, mapping: ImportMappin
             )
         ).all()
     }
-    transaction_history = db.scalars(select(Transaction).where(Transaction.user_id == import_file.user_id)).all()
+    transaction_history = transaction_history_for(db, import_file.user_id)
     existing = {item.dedupe_key for item in transaction_history}
     seen = set()
     duplicates = 0
@@ -209,17 +226,8 @@ def normalize_import(db: Session, import_file: ImportFile, mapping: ImportMappin
             provider_transaction_id=provider_id,
             notes=row.get(mapping.notes_column) if mapping.notes_column else None,
         )
-        applied_rule = apply_first_matching_rule(draft, rules, db)
-        if (
-            applied_rule
-            and applied_rule.transaction_type is not None
-            and applied_rule.is_excluded_from_spending is None
-        ):
-            draft.is_excluded_from_spending = excluded_for_type(draft.transaction_type)
-        if draft.transaction_type == TransactionType.expense and not draft.is_excluded_from_spending:
-            draft.recurring_candidate = recurring_candidate_for(
-                draft.description_clean, draft.merchant_name, draft.amount, transaction_history
-            )
+        apply_first_matching_rule(draft, rules, db)
+        recalculate_recurring_candidate(draft, transaction_history)
         db.add(draft)
     import_file.row_count = len(rows)
     import_file.duplicate_row_count = duplicates
