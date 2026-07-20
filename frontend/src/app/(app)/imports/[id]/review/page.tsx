@@ -2,7 +2,7 @@
 
 import { Trash2, X } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Badge, EmptyState, PageHeader } from "@/components/Page";
 import { RuleForm } from "@/components/RuleForm";
 import { api, money, shortDate } from "@/lib/api";
@@ -50,8 +50,10 @@ export default function ReviewPage() {
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [filter, setFilter] = useState("");
+  const reviewStatusBeforeSkip = useRef(new Map<string, string>());
 
   async function load() {
+    reviewStatusBeforeSkip.current.clear();
     try {
       const [drafts, info, cats] = await Promise.all([
         api<DraftTransaction[]>(`/imports/${id}/review`),
@@ -89,6 +91,19 @@ export default function ReviewPage() {
       setError(reason instanceof Error ? reason.message : "Could not save edit");
       await load();
       return false;
+    }
+  }
+
+  async function setSkipped(row: DraftTransaction, skipped: boolean) {
+    if (skipped) {
+      reviewStatusBeforeSkip.current.set(row.id, row.review_status);
+      await change(row, { review_status: "skipped" });
+      return;
+    }
+
+    const reviewStatus = reviewStatusBeforeSkip.current.get(row.id) || "pending";
+    if (await change(row, { review_status: reviewStatus })) {
+      reviewStatusBeforeSkip.current.delete(row.id);
     }
   }
 
@@ -363,7 +378,7 @@ export default function ReviewPage() {
               <td><select className="select" value={row.account_instrument_id || ""} onChange={(event) => change(row, { account_instrument_id: event.target.value || null })}><option value="">Parent account</option>{instruments.map((instrument) => <option key={instrument.id} value={instrument.id}>{instrument.display_name}</option>)}</select>{row.card_last_four && <small className="muted">Source •••• {row.card_last_four}</small>}</td>
               <td><input type="checkbox" checked={row.is_excluded_from_spending} onChange={(event) => change(row, { is_excluded_from_spending: event.target.checked })}/></td>
               <td><input type="checkbox" checked={row.is_recurring} onChange={(event) => change(row, { is_recurring: event.target.checked })}/></td>
-              <td className="skip-cell"><input type="checkbox" checked={row.review_status === "skipped"} onChange={(event) => change(row, { review_status: event.target.checked ? "skipped" : "pending" })} aria-label={`Skip ${row.description_clean}`}/></td>
+              <td className="skip-cell"><input type="checkbox" checked={row.review_status === "skipped"} onChange={(event) => setSkipped(row, event.target.checked)} aria-label={`Skip ${row.description_clean}`}/></td>
               <td><button className="icon-button danger" onClick={() => deleteDrafts([row.id])} disabled={deleting} aria-label={`Delete ${row.description_clean}`}><Trash2 size={16}/></button></td>
             </tr>;
           })}</tbody>

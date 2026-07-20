@@ -211,3 +211,16 @@ Inactive rules skip auto-apply with clear message; recurring_candidate recompute
 
 ### Session done (part 7)
 Auto-apply rules on import review complete, uncommitted.
+
+## Session: 2026-07-19 (part 8)
+Goal: Skip/unskip restores prior review_status (frontend-only, in-session memory) — fixes hidden Rule-from-edit button and lost auto-apply protection.
+
+### Spawned: 1b7c2b11
+Type: fix
+Sandbox: workspace-write
+
+### Complete: 1b7c2b11
+setSkipped() with reviewStatusBeforeSkip ref map: skip stores prior status, unskip restores it (pending fallback), memory cleared after restore/reload. Orchestrator inspected diff. Verified: lint, build.
+
+### Session done (part 8)
+Skip/unskip status restore complete, uncommitted.
