@@ -52,13 +52,40 @@ def test_chase_mapping_keeps_category_and_provider_type_separate():
     assert mapping["description_column"] == "Description"
     assert mapping["category_column"] == "Category"
     assert mapping["provider_type_column"] == "Type"
-    assert mapping["notes_column"] == "Memo"
+    assert mapping["memo_column"] == "Memo"
     assigned = [
         value
         for key, value in mapping.items()
         if key.endswith("_column")
     ]
     assert len(assigned) == len(set(assigned))
+
+
+def test_mapping_keeps_alternate_description_and_status_as_source_fields():
+    headers = ["Date", "Description", "Original Description", "Status", "Amount"]
+    rows = [{
+        "Date": "07/01/2026",
+        "Description": "COFFEE SHOP",
+        "Original Description": "CARD PURCHASE COFFEE SHOP 1234",
+        "Status": "Posted",
+        "Amount": "-5.25",
+    }]
+
+    mapping = detect_mapping(headers, rows)
+
+    assert mapping["description_column"] == "Description"
+    assert mapping["memo_column"] == "Original Description"
+    assert mapping["status_column"] == "Status"
+
+
+def test_single_memo_header_is_used_as_required_description():
+    mapping = detect_mapping(
+        ["Date", "Memo", "Amount"],
+        [{"Date": "07/01/2026", "Memo": "Lunch", "Amount": "12.50"}],
+    )
+
+    assert mapping["description_column"] == "Memo"
+    assert "memo_column" not in mapping
 
 
 def test_unknown_provider_gets_generic_mapping():

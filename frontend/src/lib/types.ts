@@ -46,7 +46,7 @@ export interface Instrument {
 export interface Subcategory { id: string; category_id: string; name: string; is_active: boolean; }
 export interface Category { id: string; name: string; description?: string; is_active: boolean; is_system: boolean; subcategories: Subcategory[]; }
 
-export type RuleMatchField = "description" | "merchant" | "account" | "account_instrument" | "source_category" | "source_transaction_type" | "amount" | "direction" | "cardholder_name" | "card_last_four";
+export type RuleMatchField = "description" | "memo" | "merchant" | "account" | "account_instrument" | "source_category" | "source_transaction_type" | "source_status" | "amount" | "direction" | "cardholder_name" | "card_last_four";
 export type RuleMatchOperator = "contains" | "equals" | "starts_with" | "regex" | "greater_than" | "less_than";
 
 export interface Rule {
@@ -77,8 +77,8 @@ export interface ImportRecord {
 }
 
 export interface DraftTransaction {
-  id: string; transaction_date: string; posted_date?: string; description_original: string; description_clean: string; merchant_name?: string;
-  amount: string; direction: string; transaction_type: string; source_transaction_type?: string; category_id?: string; subcategory_id?: string;
+  id: string; transaction_date: string; posted_date?: string; description_original: string; description_clean: string; memo?: string; merchant_name?: string;
+  amount: string; direction: string; transaction_type: string; source_transaction_type?: string; source_status?: string; category_id?: string; subcategory_id?: string;
   account_instrument_id?: string; card_last_four?: string; cardholder_name?: string; is_excluded_from_spending: boolean;
   is_recurring: boolean; recurring_candidate: boolean; duplicate_status: string; review_status: string; rule_applied: boolean; notes?: string;
 }

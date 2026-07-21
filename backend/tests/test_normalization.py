@@ -3,6 +3,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
@@ -88,6 +89,24 @@ def test_rule_can_match_preserved_provider_transaction_type():
     assert rule_matches(transaction, rule) is True
 
 
+@pytest.mark.parametrize(
+    ("match_field", "attribute", "actual", "expected"),
+    [
+        (MatchField.memo, "memo", "CARD PURCHASE COFFEE SHOP", "coffee shop"),
+        (MatchField.source_status, "source_status", "Posted", "posted"),
+    ],
+)
+def test_rule_can_match_preserved_memo_and_status(match_field, attribute, actual, expected):
+    transaction = SimpleNamespace(**{attribute: actual})
+    rule = SimpleNamespace(
+        match_field=match_field,
+        match_operator=MatchOperator.contains,
+        match_value=expected,
+    )
+
+    assert rule_matches(transaction, rule) is True
+
+
 def test_dedupe_key_uses_instrument_when_available():
     common = [uuid4(), uuid4()]
     key_a = make_dedupe_key(*common, uuid4(), None, "2026-07-01", Decimal("5"), Direction.outflow, "Coffee")
@@ -165,8 +184,8 @@ def test_provider_transaction_type_mapping_is_applied_during_normalization(tmp_p
     Base.metadata.create_all(engine)
     csv_path = tmp_path / "provider-types.csv"
     csv_path.write_text(
-        "Date,Description,Category,Type,Amount\n"
-        "2026-02-25,SANDALS R US,Shopping,Sale,-16.99\n"
+        "Date,Description,Original Description,Category,Type,Status,Amount\n"
+        "2026-02-25,SANDALS R US,CARD PURCHASE SANDALS R US,Shopping,Sale,Posted,-16.99\n"
     )
 
     with Session(engine) as db:
@@ -198,7 +217,7 @@ def test_provider_transaction_type_mapping_is_applied_during_normalization(tmp_p
             original_filename=csv_path.name,
             storage_path=str(csv_path),
             file_hash="a" * 64,
-            headers_json=["Date", "Description", "Category", "Type", "Amount"],
+            headers_json=["Date", "Description", "Original Description", "Category", "Type", "Status", "Amount"],
             sample_rows_json=[],
             proposed_mapping_json={},
         )
@@ -210,8 +229,10 @@ def test_provider_transaction_type_mapping_is_applied_during_normalization(tmp_p
             header_signature="b" * 64,
             date_column="Date",
             description_column="Description",
+            memo_column="Original Description",
             category_column="Category",
             provider_type_column="Type",
+            status_column="Status",
             amount_column="Amount",
             amount_behavior=AmountBehavior.signed_amount,
         )
@@ -229,6 +250,8 @@ def test_provider_transaction_type_mapping_is_applied_during_normalization(tmp_p
         assert draft is not None
         assert draft.source_category == "Shopping"
         assert draft.source_transaction_type == "Sale"
+        assert draft.memo == "CARD PURCHASE SANDALS R US"
+        assert draft.source_status == "Posted"
         assert draft.transaction_type == TransactionType.refund
         assert draft.is_excluded_from_spending is False
 

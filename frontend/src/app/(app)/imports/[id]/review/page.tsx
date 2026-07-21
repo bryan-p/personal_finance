@@ -338,10 +338,11 @@ export default function ReviewPage() {
                 {!row.category_id && <Badge tone="warn">uncategorized</Badge>}
                 {row.rule_applied && <Badge tone="accent">rule</Badge>}
                 {row.recurring_candidate && <Badge tone="good">recurring?</Badge>}
+                {row.source_status && <Badge>{row.source_status}</Badge>}
                 {row.category_id && row.review_status === "edited" && <button className="button compact-button" onClick={() => createRule(row)}>Rule from edit</button>}
               </div></td>
               <td className="nowrap">{shortDate(row.transaction_date)}</td>
-              <td><input className="input" value={row.description_clean} onChange={(event) => setRows((current) => current.map((candidate) => candidate.id === row.id ? { ...candidate, description_clean: event.target.value } : candidate))} onBlur={(event) => change(row, { description_clean: event.target.value })}/>{row.cardholder_name && <small className="muted">{row.cardholder_name}</small>}</td>
+              <td><input className="input" value={row.description_clean} onChange={(event) => setRows((current) => current.map((candidate) => candidate.id === row.id ? { ...candidate, description_clean: event.target.value } : candidate))} onBlur={(event) => change(row, { description_clean: event.target.value })}/>{row.memo && <small className="muted">Memo: {row.memo}</small>}{row.cardholder_name && <small className="muted">{row.cardholder_name}</small>}</td>
               <td className={`amount ${row.direction}`}>{row.direction === "inflow" ? "+" : "−"}{money(row.amount)}</td>
               <td>
                 <select className="select" value={row.category_id || ""} onChange={(event) => {
@@ -374,7 +375,7 @@ export default function ReviewPage() {
                   {category && <option value={ADD_SUBCATEGORY_VALUE}>Add new subcategory…</option>}
                 </select>
               </td>
-              <td><select className="select" value={row.transaction_type} onChange={(event) => change(row, { transaction_type: event.target.value, is_excluded_from_spending: ["transfer", "credit_card_payment", "adjustment"].includes(event.target.value) })}>{types.map((type) => <option key={type} value={type}>{type.replaceAll("_", " ")}</option>)}</select>{row.source_transaction_type && <small className="muted">Source: {row.source_transaction_type}</small>}</td>
+              <td><select className="select" value={row.transaction_type} onChange={(event) => change(row, { transaction_type: event.target.value, is_excluded_from_spending: ["transfer", "credit_card_payment", "adjustment"].includes(event.target.value) })}>{types.map((type) => <option key={type} value={type}>{type.replaceAll("_", " ")}</option>)}</select>{row.source_transaction_type && <small className="muted">Source type: {row.source_transaction_type}</small>}</td>
               <td><select className="select" value={row.account_instrument_id || ""} onChange={(event) => change(row, { account_instrument_id: event.target.value || null })}><option value="">Parent account</option>{instruments.map((instrument) => <option key={instrument.id} value={instrument.id}>{instrument.display_name}</option>)}</select>{row.card_last_four && <small className="muted">Source •••• {row.card_last_four}</small>}</td>
               <td><input type="checkbox" checked={row.is_excluded_from_spending} onChange={(event) => change(row, { is_excluded_from_spending: event.target.checked })}/></td>
               <td><input type="checkbox" checked={row.is_recurring} onChange={(event) => change(row, { is_recurring: event.target.checked })}/></td>

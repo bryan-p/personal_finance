@@ -128,9 +128,9 @@ class InstrumentOut(InstrumentIn, ORMModel):
 
 
 MAPPING_FIELDS = [
-    "date_column", "post_date_column", "description_column", "merchant_column", "amount_column",
+    "date_column", "post_date_column", "description_column", "memo_column", "merchant_column", "amount_column",
     "debit_column", "credit_column", "category_column", "provider_type_column",
-    "transaction_id_column", "notes_column", "card_number_column", "card_last_four_column",
+    "status_column", "transaction_id_column", "notes_column", "card_number_column", "card_last_four_column",
     "cardholder_name_column", "account_suffix_column",
 ]
 
@@ -143,12 +143,14 @@ class MappingIn(BaseModel):
     date_column: str | None = None
     post_date_column: str | None = None
     description_column: str | None = None
+    memo_column: str | None = None
     merchant_column: str | None = None
     amount_column: str | None = None
     debit_column: str | None = None
     credit_column: str | None = None
     category_column: str | None = None
     provider_type_column: str | None = None
+    status_column: str | None = None
     transaction_id_column: str | None = None
     notes_column: str | None = None
     card_number_column: str | None = None
@@ -182,12 +184,14 @@ class MappingPatch(BaseModel):
     date_column: str | None = None
     post_date_column: str | None = None
     description_column: str | None = None
+    memo_column: str | None = None
     merchant_column: str | None = None
     amount_column: str | None = None
     debit_column: str | None = None
     credit_column: str | None = None
     category_column: str | None = None
     provider_type_column: str | None = None
+    status_column: str | None = None
     transaction_id_column: str | None = None
     notes_column: str | None = None
     card_number_column: str | None = None

@@ -152,7 +152,7 @@ export default function TransactionsPage() {
       <button className="button button-danger" onClick={() => deleteTransactions([...selected])} disabled={deleting}><Trash2 size={15}/>{deleting ? "Deleting…" : "Delete selected"}</button>
     </div>}
     <div className="toolbar">
-      <div className="field grow"><label>Search</label><div className="search-field"><Search size={16}/><input className="input" value={filters.search} onChange={(event) => setFilter("search", event.target.value)} placeholder="Merchant or description"/></div></div>
+      <div className="field grow"><label>Search</label><div className="search-field"><Search size={16}/><input className="input" value={filters.search} onChange={(event) => setFilter("search", event.target.value)} placeholder="Merchant, description, or memo"/></div></div>
       <div className="field"><label>From</label><input className="input" type="date" value={filters.start_date} onChange={(event) => setFilter("start_date", event.target.value)}/></div>
       <div className="field"><label>To</label><input className="input" type="date" value={filters.end_date} onChange={(event) => setFilter("end_date", event.target.value)}/></div>
       <div className="field"><label>Account</label><select className="select" value={filters.account_id} onChange={(event) => setFilter("account_id", event.target.value)}><option value="">All</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></div>
@@ -172,7 +172,7 @@ export default function TransactionsPage() {
             return <tr key={row.id} className={row.is_excluded_from_spending ? "excluded-row" : ""}>
               <td className="selection-cell"><input type="checkbox" checked={selected.has(row.id)} onChange={() => toggle(row.id)} aria-label={`Select ${row.merchant_name || row.description_clean}`}/></td>
               <td>{shortDate(row.transaction_date)}</td>
-              <td><strong>{row.merchant_name || row.description_clean}</strong>{row.merchant_name && <div className="muted">{row.description_clean}</div>}</td>
+              <td><strong>{row.merchant_name || row.description_clean}</strong>{row.merchant_name && <div className="muted">{row.description_clean}</div>}{row.memo && <div className="muted">Memo: {row.memo}</div>}</td>
               <td>{account?.name || "—"}{row.card_last_four && <div className="muted">Card {row.card_last_four}</div>}</td>
               <td><select className="select" value={row.category_id || ""} onChange={(event) => {
                 const categoryId = event.target.value || null;
@@ -184,9 +184,9 @@ export default function TransactionsPage() {
                   ...(transactionType ? { transaction_type: transactionType } : {}),
                 });
               }}><option value="">Uncategorized</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></td>
-              <td><select className="select" value={row.transaction_type} onChange={(event) => change(row, { transaction_type: event.target.value })}>{transactionTypes.map((type) => <option key={type} value={type}>{type.replaceAll("_", " ")}</option>)}</select>{row.source_transaction_type && <small className="muted">Source: {row.source_transaction_type}</small>}</td>
+              <td><select className="select" value={row.transaction_type} onChange={(event) => change(row, { transaction_type: event.target.value })}>{transactionTypes.map((type) => <option key={type} value={type}>{type.replaceAll("_", " ")}</option>)}</select>{row.source_transaction_type && <small className="muted">Source type: {row.source_transaction_type}</small>}</td>
               <td className={`amount ${row.direction}`}>{row.direction === "inflow" ? "+" : "−"}{money(row.amount)}</td>
-              <td><div className="flag-stack">{row.is_excluded_from_spending && <Badge>excluded</Badge>}{row.is_recurring && <Badge tone="good">recurring</Badge>}{!row.category_id && <Badge tone="warn">review</Badge>}</div></td>
+              <td><div className="flag-stack">{row.source_status && <Badge tone="accent">{row.source_status}</Badge>}{row.is_excluded_from_spending && <Badge>excluded</Badge>}{row.is_recurring && <Badge tone="good">recurring</Badge>}{!row.category_id && <Badge tone="warn">review</Badge>}</div></td>
               <td><button className="icon-button danger" onClick={() => deleteTransactions([row.id])} disabled={deleting} aria-label={`Delete ${row.merchant_name || row.description_clean}`}><Trash2 size={16}/></button></td>
             </tr>;
           })}</tbody>

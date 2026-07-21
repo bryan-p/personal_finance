@@ -166,6 +166,7 @@ def normalize_import(db: Session, import_file: ImportFile, mapping: ImportMappin
         transacted = parse_date(date_value or posted_value)
         posted = parse_date(posted_value) if posted_value else None
         description = clean_description(row.get(mapping.description_column, ""))
+        memo = clean_description(row.get(mapping.memo_column, "")) if mapping.memo_column else None
         amount, direction = normalized_amount(row, mapping)
         raw_identifier = None
         for column in (mapping.card_last_four_column, mapping.card_number_column, mapping.account_suffix_column):
@@ -189,6 +190,7 @@ def normalize_import(db: Session, import_file: ImportFile, mapping: ImportMappin
             if mapping.provider_type_column
             else None
         )
+        source_status = (row.get(mapping.status_column) or None) if mapping.status_column else None
         provider_mapping = category_mappings.get((source_category or "").strip().casefold())
         provider_type_mapping = type_mappings.get(
             (source_transaction_type or "").strip().casefold()
@@ -207,6 +209,7 @@ def normalize_import(db: Session, import_file: ImportFile, mapping: ImportMappin
             posted_date=posted,
             description_original=description,
             description_clean=description,
+            memo=memo or None,
             merchant_name=row.get(mapping.merchant_column) if mapping.merchant_column else None,
             amount=amount,
             direction=direction,
@@ -215,6 +218,7 @@ def normalize_import(db: Session, import_file: ImportFile, mapping: ImportMappin
             subcategory_id=provider_mapping.subcategory_id if provider_mapping else None,
             source_category=source_category,
             source_transaction_type=source_transaction_type,
+            source_status=source_status,
             source_card_identifier=source_identifier,
             card_last_four=last_four,
             cardholder_name=row.get(mapping.cardholder_name_column) if mapping.cardholder_name_column else None,

@@ -35,7 +35,11 @@ def transaction_query(user_id, start_date=None, end_date=None, account_id=None, 
     if transaction_type:
         query = query.where(Transaction.transaction_type == transaction_type)
     if search:
-        query = query.where(or_(Transaction.description_clean.ilike(f"%{search}%"), Transaction.merchant_name.ilike(f"%{search}%")))
+        query = query.where(or_(
+            Transaction.description_clean.ilike(f"%{search}%"),
+            Transaction.memo.ilike(f"%{search}%"),
+            Transaction.merchant_name.ilike(f"%{search}%"),
+        ))
     return query
 
 
@@ -110,9 +114,9 @@ def export_transactions(
     rows = db.scalars(transaction_query(user.id, start_date, end_date, account_id, account_instrument_id, category_id, subcategory_id, transaction_type, search).order_by(Transaction.transaction_date)).all()
     output = io.StringIO()
     fields = [
-        "transaction_date", "posted_date", "description", "merchant", "amount", "direction",
+        "transaction_date", "posted_date", "description", "memo", "merchant", "amount", "direction",
         "transaction_type", "account_id", "account_instrument_id", "category_id", "subcategory_id",
-        "source_category", "source_transaction_type", "card_last_four", "cardholder_name",
+        "source_category", "source_transaction_type", "source_status", "card_last_four", "cardholder_name",
         "excluded_from_spending", "is_recurring", "notes",
     ]
     writer = csv.DictWriter(output, fieldnames=fields)
@@ -122,6 +126,7 @@ def export_transactions(
             "transaction_date": item.transaction_date,
             "posted_date": item.posted_date or "",
             "description": item.description_clean,
+            "memo": item.memo or "",
             "merchant": item.merchant_name or "",
             "amount": item.amount,
             "direction": item.direction.value,
@@ -132,6 +137,7 @@ def export_transactions(
             "subcategory_id": item.subcategory_id or "",
             "source_category": item.source_category or "",
             "source_transaction_type": item.source_transaction_type or "",
+            "source_status": item.source_status or "",
             "card_last_four": item.card_last_four or "",
             "cardholder_name": item.cardholder_name or "",
             "excluded_from_spending": item.is_excluded_from_spending,

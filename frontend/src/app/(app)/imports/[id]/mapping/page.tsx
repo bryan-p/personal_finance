@@ -10,12 +10,14 @@ const roles = [
   { key: "date_column", label: "Transaction date" },
   { key: "post_date_column", label: "Posted date" },
   { key: "description_column", label: "Description" },
+  { key: "memo_column", label: "Memo / alternate description" },
   { key: "merchant_column", label: "Merchant" },
   { key: "amount_column", label: "Amount" },
   { key: "debit_column", label: "Debit" },
   { key: "credit_column", label: "Credit" },
   { key: "category_column", label: "Provider category" },
   { key: "provider_type_column", label: "Provider transaction type" },
+  { key: "status_column", label: "Provider status" },
   { key: "transaction_id_column", label: "Transaction ID" },
   { key: "notes_column", label: "Notes" },
   { key: "card_number_column", label: "Card number" },
@@ -227,7 +229,7 @@ export default function MappingPage() {
         </div>)}
       </div>
       <div className="notice notice-warn mapping-help">
-        <strong>Provider category and provider transaction type are source labels.</strong> Institution mappings translate them into your category, subcategory, and transaction type before rules run.
+        <strong>Provider fields are preserved separately from your edits.</strong> Memo and status can be targeted by rules; a mapped status does not automatically skip pending rows. If the CSV has one date, choose Posted date only when that is what the provider means—it will also be used as the transaction date for reporting.
       </div>
       <div className="form-actions">
         <button type="button" className="button" onClick={() => router.push("/imports")}>Save for later</button>

@@ -93,11 +93,13 @@ class ReviewStatus(str, enum.Enum):
 
 class MatchField(str, enum.Enum):
     description = "description"
+    memo = "memo"
     merchant = "merchant"
     account = "account"
     account_instrument = "account_instrument"
     source_category = "source_category"
     source_transaction_type = "source_transaction_type"
+    source_status = "source_status"
     amount = "amount"
     direction = "direction"
     cardholder_name = "cardholder_name"
@@ -220,12 +222,14 @@ class ImportMapping(Base, IdMixin, TimestampMixin):
     date_column: Mapped[str | None] = mapped_column(String(255))
     post_date_column: Mapped[str | None] = mapped_column(String(255))
     description_column: Mapped[str | None] = mapped_column(String(255))
+    memo_column: Mapped[str | None] = mapped_column(String(255))
     merchant_column: Mapped[str | None] = mapped_column(String(255))
     amount_column: Mapped[str | None] = mapped_column(String(255))
     debit_column: Mapped[str | None] = mapped_column(String(255))
     credit_column: Mapped[str | None] = mapped_column(String(255))
     category_column: Mapped[str | None] = mapped_column(String(255))
     provider_type_column: Mapped[str | None] = mapped_column(String(255))
+    status_column: Mapped[str | None] = mapped_column(String(255))
     transaction_id_column: Mapped[str | None] = mapped_column(String(255))
     notes_column: Mapped[str | None] = mapped_column(String(255))
     card_number_column: Mapped[str | None] = mapped_column(String(255))
@@ -313,6 +317,7 @@ class TransactionColumns:
     posted_date: Mapped[date | None] = mapped_column(Date)
     description_original: Mapped[str] = mapped_column(Text)
     description_clean: Mapped[str] = mapped_column(Text)
+    memo: Mapped[str | None] = mapped_column(Text)
     merchant_name: Mapped[str | None] = mapped_column(String(255))
     amount: Mapped[Decimal] = mapped_column(Numeric(14, 2))
     direction: Mapped[Direction] = mapped_column(enum_type(Direction))
@@ -321,6 +326,7 @@ class TransactionColumns:
     subcategory_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("subcategories.id"), index=True)
     source_category: Mapped[str | None] = mapped_column(String(160))
     source_transaction_type: Mapped[str | None] = mapped_column(String(160))
+    source_status: Mapped[str | None] = mapped_column(String(160))
     source_card_identifier: Mapped[str | None] = mapped_column(String(64))
     card_last_four: Mapped[str | None] = mapped_column(String(4))
     cardholder_name: Mapped[str | None] = mapped_column(String(160))

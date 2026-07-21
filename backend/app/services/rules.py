@@ -31,12 +31,16 @@ def rule_matches(transaction, rule, db=None) -> bool:
     field = rule.match_field.value
     if field == "description":
         actual = transaction.description_original
+    elif field == "memo":
+        actual = transaction.memo
     elif field == "merchant":
         actual = transaction.merchant_name
     elif field == "source_category":
         actual = transaction.source_category
     elif field == "source_transaction_type":
         actual = transaction.source_transaction_type
+    elif field == "source_status":
+        actual = transaction.source_status
     elif field == "amount":
         actual = transaction.amount
     elif field == "direction":

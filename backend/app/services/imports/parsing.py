@@ -12,14 +12,16 @@ HEADER_ALIASES = {
     "date_column": ["transaction date", "trans date", "date", "effective date"],
     "post_date_column": ["post date", "posted date", "posting date"],
     "description_column": ["description", "details", "memo", "transaction", "name"],
+    "memo_column": ["original description", "extended description", "memo"],
     "merchant_column": ["merchant", "payee"],
     "amount_column": ["amount", "transaction amount"],
     "debit_column": ["debit", "withdrawal", "charge"],
     "credit_column": ["credit", "deposit", "payment"],
     "category_column": ["category", "classification"],
     "provider_type_column": ["type", "transaction type", "activity type"],
+    "status_column": ["status", "transaction status", "state"],
     "transaction_id_column": ["transaction id", "reference number", "reference", "id"],
-    "notes_column": ["notes", "note", "memo"],
+    "notes_column": ["notes", "note"],
     "card_number_column": ["card number", "account number"],
     "card_last_four_column": ["card last four", "last 4", "last four"],
     "cardholder_name_column": ["cardholder", "authorized user", "employee name"],
@@ -107,6 +109,9 @@ def detect_mapping(headers: list[str], sample_rows: list[dict]) -> dict:
         confidence[field] = round(-negative_score, 3)
         assigned_fields.add(field)
         assigned_headers.add(header)
+    if "description_column" not in detected and "memo_column" in detected:
+        detected["description_column"] = detected.pop("memo_column")
+        confidence["description_column"] = confidence.pop("memo_column")
     if "amount_column" not in detected and not ({"debit_column", "credit_column"} <= detected.keys()):
         for header in headers:
             if header in assigned_headers:

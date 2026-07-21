@@ -8,11 +8,13 @@ import type { Category, Rule, RuleMatchField, RuleMatchOperator } from "@/lib/ty
 
 const matchFields: RuleMatchField[] = [
   "description",
+  "memo",
   "merchant",
   "account",
   "account_instrument",
   "source_category",
   "source_transaction_type",
+  "source_status",
   "amount",
   "direction",
   "cardholder_name",
